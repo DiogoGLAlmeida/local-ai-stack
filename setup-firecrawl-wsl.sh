@@ -45,7 +45,7 @@ docker compose up --build -d
 
 echo "==> Waiting for Firecrawl to be ready..."
 ok=0
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   if curl -fsS --max-time 5 "$FC_URL/v0/health/readiness" 2>/dev/null | grep -q '"ok"'; then ok=1; break; fi
   sleep 5
 done

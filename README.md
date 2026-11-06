@@ -1,5 +1,7 @@
 # local-ai-stack
 
+[![CI](https://github.com/DiogoGLAlmeida/local-ai-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/DiogoGLAlmeida/local-ai-stack/actions/workflows/ci.yml)
+
 **A private AI assistant that runs on one gaming PC: local LLMs, an agent, 12+ MCP tool servers, and n8n automations that turn email, news, threat intel and code activity into notes and a small web app.**
 
 All inference runs locally on an AMD RX 7900 XTX (24 GB, ROCm), without cloud LLM APIs. The setup is tuned so the PC is still usable for gaming: one model loaded at a time, a short keep-alive, and a one-command "game mode".
@@ -87,6 +89,7 @@ game-mode.ps1             free the GPU for gaming
 n8n/                      workflow exports (*.json) + readable source of every code step
 mail-app/                 nginx config + the single-page app
 docs/SETUP.md             full step-by-step setup guide and troubleshooting
+.github/                  CI: secret scan, n8n/Compose validation, ShellCheck, PSScriptAnalyzer
 ```
 
 ## Quick start
