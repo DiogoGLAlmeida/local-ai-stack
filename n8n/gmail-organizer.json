@@ -1,0 +1,201 @@
+{
+  "name": "Gmail organizer (weekly filters)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "5a9a00d9-3ac3-47e5-b2c0-f3d73315a890",
+      "name": "Every 30 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "18dab7d7-e3dd-4687-b0c0-eb60ec11bcef",
+      "name": "Test run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tz = 'Europe/Lisbon';\nconst now = $now.setZone(tz);\nreturn [{ json: {\n  week: now.toFormat(\"kkkk-'W'WW\"),\n  tz,\n  logFolder: '/vault/Gmail',\n  googleMcpUrl: 'http://mcp-google:8000/mcp',\n  ollamaUrl: 'http://host.docker.internal:11434',\n  model: 'qwen3.8:27b',\n  dryRun: true,\n\n  lookbackQuery: 'newer_than:30d -in:sent -in:drafts -in:chats -in:spam -in:trash',\n  maxMessages: 300,\n  minEmailsPerSender: 2,\n  maxNewFiltersPerRun: 25,\n  labels: {\n    Finance:     ['banks, payments, invoices, receipts, bills, subscriptions billing, PayPal, MB Way', '#16a766'],\n    Shopping:    ['online stores, orders, shipping and delivery updates, marketplaces', '#ffad47'],\n    Gaming:      ['Steam, Epic Games, game stores, FACEIT, esports, game publishers and newsletters', '#a479e2'],\n    Dev:         ['GitHub, GitLab, CI, developer tools, cloud services, package registries, AI tools', '#4a86e8'],\n    Security:    ['security services, password managers, account protection services (not normal companies)', '#fb4c2f'],\n    Jobs:        ['job alerts, job boards, recruiters, LinkedIn job emails', '#43d692'],\n    Education:   ['universities, schools, online courses, learning platforms', '#fad165'],\n    Newsletters: ['newsletters, blogs, media, marketing and promotional emails', '#999999'],\n    Social:      ['social networks, forums, communities, Discord, Reddit, LinkedIn social notifications', '#f691b3'],\n    Travel:      ['airlines, hotels, trains, buses, booking sites, transport apps', '#cccccc'],\n    Personal:    ['individual people writing personally (friends, family)', '#ffffff'],\n  },\n  freeMailDomains: ['gmail.com','googlemail.com','hotmail.com','outlook.com','live.com','msn.com','yahoo.com',\n    'icloud.com','me.com','proton.me','protonmail.com','sapo.pt','gmx.com','gmx.net','aol.com','mail.com'],\n}}];\n"
+      },
+      "id": "989d1b0b-e082-4246-9943-abfc1d16b1b3",
+      "name": "Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst S = $input.first().json;\nconst logFile = `${S.logFolder}/${S.week} Organizer.md`;\nlet manual = false;\ntry { manual = $('Test run').isExecuted; } catch (e) {}\nif (!manual && fs.existsSync(logFile)) return [];\nreturn [{ json: { ...S, logFile, manual } }];\n"
+      },
+      "id": "529d5bf2-6e1f-4661-a862-889f44271dbe",
+      "name": "Already done this week?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const S = $input.first().json;\n\nconst helpers = this.helpers;\nlet sid = null; let nextId = 0;\nconst parseBody = (body) => {\n  if (Buffer.isBuffer(body)) body = body.toString('utf8');\n  if (typeof body !== 'string') return body || {};\n  const t = body.trim();\n  if (t.startsWith('{')) return JSON.parse(t);\n  const datas = t.split('\\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim());\n  for (const d of datas.reverse()) { try { const j = JSON.parse(d); if (j.result || j.error) return j; } catch (e) {} }\n  return {};\n};\nasync function rpc(method, params, notify = false) {\n  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };\n  if (sid) headers['mcp-session-id'] = sid;\n  const msg = notify ? { jsonrpc: '2.0', method, params } : { jsonrpc: '2.0', id: ++nextId, method, params };\n  const res = await helpers.httpRequest({ method: 'POST', url: S.googleMcpUrl, headers, body: JSON.stringify(msg),\n    json: false, returnFullResponse: true, ignoreHttpStatusErrors: true, timeout: 120000 });\n  const h = res.headers || {};\n  sid = sid || h['mcp-session-id'] || h['Mcp-Session-Id'];\n  if (notify) return null;\n  const j = parseBody(res.body);\n  if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));\n  return j.result;\n}\nasync function mcpInit() {\n  await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'n8n-gmail-organizer', version: '1' } });\n  await rpc('notifications/initialized', {}, true);\n}\nasync function tool(name, args) {\n  const r = await rpc('tools/call', { name, arguments: args });\n  const text = (r?.content || []).map(c => c.text || '').join('\\n').trim();\n  if (/ACTION REQUIRED|Authentication Needed/i.test(text)) throw new Error('Google sign-in needed (see README: Google sign-in link)');\n  if (r?.isError) throw new Error(text.slice(0, 400));\n  return text;\n}\n\nawait mcpInit();\n\nconst messages = []; let pageToken = null;\nfor (let page = 0; page < 5 && messages.length < S.maxMessages; page++) {\n  const args = { query: S.lookbackQuery, page_size: 100, include_headers: true };\n  if (pageToken) args.page_token = pageToken;\n  const text = await tool('search_gmail_messages', args);\n  const blocks = text.split(/\\n\\s*\\d+\\.\\s+Message ID:/).slice(1);\n  for (const b of blocks) {\n    const get = (k) => { const m = b.match(new RegExp(`^\\\\s*${k}:\\\\s*(.*)$`, 'mi')); return m ? m[1].trim() : ''; };\n    messages.push({ from: get('From'), subject: get('Subject'), labels: get('Labels') });\n  }\n  const t = text.match(/next[_ ]?page[_ ]?token[^A-Za-z0-9_-]*([A-Za-z0-9_-]{8,})/i);\n  if (!t || !blocks.length) break;\n  pageToken = t[1];\n}\n\nconst baseDomain = (d) => {\n  const p = d.toLowerCase().split('.');\n  if (p.length > 2 && ['co','com','org','gov','edu','ac','net'].includes(p[p.length - 2]) && p[p.length - 1].length === 2)\n    return p.slice(-3).join('.');\n  return p.slice(-2).join('.');\n};\nconst senders = {};\nfor (const m of messages) {\n  const addr = ((m.from.match(/<([^>]+)>/) || [])[1] || m.from).trim().toLowerCase();\n  if (!addr.includes('@')) continue;\n  const domain = addr.split('@')[1];\n  const key = S.freeMailDomains.includes(domain) ? addr : baseDomain(domain);\n  const name = m.from.replace(/<[^>]+>/, '').replace(/\"/g, '').trim();\n  senders[key] = senders[key] || { key, names: new Set(), count: 0, subjects: [] };\n  senders[key].count++; senders[key].names.add(name);\n  if (senders[key].subjects.length < 2) senders[key].subjects.push(m.subject.slice(0, 90));\n}\n\nlet filtersText = '';\ntry { filtersText = await tool('list_gmail_filters', {}); } catch (e) { throw new Error('Cannot read filters: ' + e.message); }\nconst covered = new Set();\nfor (const m of filtersText.matchAll(/from[\"']?\\s*[:=]\\s*[\"']?([^\\s\"',}\\)]+)/gi)) covered.add(m[1].toLowerCase());\nlet labels = [];\ntry { labels = JSON.parse(await tool('list_gmail_labels', { compact: true, include_system: false })).labels || []; } catch (e) {}\n\nconst candidates = Object.values(senders)\n  .filter(s => s.count >= S.minEmailsPerSender && !covered.has(s.key))\n  .sort((a, b) => b.count - a.count)\n  .map(s => ({ key: s.key, name: [...s.names].slice(0, 2).join(' / '), count: s.count, subjects: s.subjects }));\n\nreturn [{ json: { ...S, stats: { messages: messages.length, senders: Object.keys(senders).length,\n  alreadyFiltered: [...covered].length }, candidates, existingLabels: labels } }];\n"
+      },
+      "id": "5441fb81-e972-4c6b-bd06-7d1d1426e78a",
+      "name": "Collect senders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const S = $input.first().json;\nconst allowed = Object.keys(S.labels);\nconst labelGuide = Object.entries(S.labels).map(([n, [d]]) => `- ${n}: ${d}`).join('\\n');\nconst assignments = {}; const problems = [];\nfor (let i = 0; i < S.candidates.length; i += 30) {\n  const batch = S.candidates.slice(i, i + 30);\n  const list = batch.map(c => `${c.key} | ${c.name} | ${c.count} emails | e.g. \"${c.subjects.join('\" ; \"')}\"`).join('\\n');\n  const prompt = `Sort each email sender into exactly one label, or \"none\" if no label fits or you are unsure.\nLabels:\n${labelGuide}\nRules: use only the label names above or \"none\". Judge by the sender and the example subjects.\nAnswer ONLY with JSON: {\"assignments\":[{\"sender\":\"<sender key exactly as given>\",\"label\":\"<label or none>\"}]}\n\nSenders (key | name | count | example subjects):\n${list}`;\n  try {\n    const r = await this.helpers.httpRequest({ method: 'POST', url: `${S.ollamaUrl}/api/chat`, json: true, timeout: 600000,\n      body: { model: S.model, stream: false, think: false, format: 'json', keep_alive: '2m',\n        options: { num_ctx: 16384, temperature: 0 }, messages: [{ role: 'user', content: prompt }] } });\n    const out = JSON.parse(r.message?.content || '{}');\n    const keys = new Set(batch.map(c => c.key));\n    for (const a of out.assignments || []) {\n      if (keys.has(a.sender) && (allowed.includes(a.label) || a.label === 'none')) assignments[a.sender] = a.label;\n    }\n  } catch (e) { problems.push(`classification batch ${i / 30 + 1}: ${e.message}`); }\n}\nreturn [{ json: { ...S, assignments, problems } }];\n"
+      },
+      "id": "179a4008-584b-4c91-8e7a-c03cacc9ccb9",
+      "name": "Classify senders (Ollama)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        930,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const S = $input.first().json;\n\nconst helpers = this.helpers;\nlet sid = null; let nextId = 0;\nconst parseBody = (body) => {\n  if (Buffer.isBuffer(body)) body = body.toString('utf8');\n  if (typeof body !== 'string') return body || {};\n  const t = body.trim();\n  if (t.startsWith('{')) return JSON.parse(t);\n  const datas = t.split('\\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim());\n  for (const d of datas.reverse()) { try { const j = JSON.parse(d); if (j.result || j.error) return j; } catch (e) {} }\n  return {};\n};\nasync function rpc(method, params, notify = false) {\n  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };\n  if (sid) headers['mcp-session-id'] = sid;\n  const msg = notify ? { jsonrpc: '2.0', method, params } : { jsonrpc: '2.0', id: ++nextId, method, params };\n  const res = await helpers.httpRequest({ method: 'POST', url: S.googleMcpUrl, headers, body: JSON.stringify(msg),\n    json: false, returnFullResponse: true, ignoreHttpStatusErrors: true, timeout: 120000 });\n  const h = res.headers || {};\n  sid = sid || h['mcp-session-id'] || h['Mcp-Session-Id'];\n  if (notify) return null;\n  const j = parseBody(res.body);\n  if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));\n  return j.result;\n}\nasync function mcpInit() {\n  await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'n8n-gmail-organizer', version: '1' } });\n  await rpc('notifications/initialized', {}, true);\n}\nasync function tool(name, args) {\n  const r = await rpc('tools/call', { name, arguments: args });\n  const text = (r?.content || []).map(c => c.text || '').join('\\n').trim();\n  if (/ACTION REQUIRED|Authentication Needed/i.test(text)) throw new Error('Google sign-in needed (see README: Google sign-in link)');\n  if (r?.isError) throw new Error(text.slice(0, 400));\n  return text;\n}\n\nconst isAddr = (k) => k.includes('@');\nconst planned = S.candidates\n  .filter(c => S.assignments[c.key] && S.assignments[c.key] !== 'none')\n  .slice(0, S.maxNewFiltersPerRun)\n  .map(c => ({ sender: c.key, label: S.assignments[c.key], count: c.count, name: c.name }));\nconst result = { createdLabels: [], createdFilters: [], errors: [...(S.problems || [])] };\n\nif (!S.dryRun && planned.length) {\n  await mcpInit();\n  const labelIds = Object.fromEntries((S.existingLabels || []).map(l => [l.name, l.id]));\n  for (const name of [...new Set(planned.map(p => p.label))]) {\n    if (labelIds[name]) continue;\n    const color = S.labels[name]?.[1];\n    const text = color === '#ffffff' || color === '#cccccc' || color === '#fad165' ? '#000000' : '#ffffff';\n    try {\n      try { await tool('manage_gmail_label', { action: 'create', name, background_color: color, text_color: text }); }\n      catch (e) { await tool('manage_gmail_label', { action: 'create', name }); }\n      result.createdLabels.push(name);\n    } catch (e) { result.errors.push(`label ${name}: ${e.message}`); }\n  }\n  try {\n    const fresh = JSON.parse(await tool('list_gmail_labels', { compact: true, include_system: false })).labels || [];\n    for (const l of fresh) labelIds[l.name] = l.id;\n  } catch (e) { result.errors.push('could not re-read labels: ' + e.message); }\n  for (const p of planned) {\n    const id = labelIds[p.label];\n    if (!id) { result.errors.push(`no label id for ${p.label}`); continue; }\n    try {\n      await tool('manage_gmail_filter', { action: 'create', criteria: { from: p.sender }, filter_action: { addLabelIds: [id] } });\n      result.createdFilters.push(p);\n    } catch (e) { result.errors.push(`filter ${p.sender}: ${e.message}`); }\n  }\n}\nreturn [{ json: { ...S, planned, result } }];\n"
+      },
+      "id": "715833b8-5040-4af2-936e-41cf57b3ff5f",
+      "name": "Create labels & filters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst S = $input.first().json;\nconst L = [];\nL.push('---', `week: ${S.week}`, 'tags: [gmail, organizer]', '---', '', `# Gmail organizer · ${S.week}`, '');\nL.push(S.dryRun ? '> **Dry run:** nothing was changed in Gmail. Check the plan below, then set `dryRun: false` in the Settings step.'\n                : '> Changes were made in Gmail (labels/filters below). New mail from these senders is labelled automatically.', '');\nL.push(`Looked at ${S.stats.messages} emails from ${S.stats.senders} senders · ${S.stats.alreadyFiltered} already had a filter · ${S.candidates.length} candidates (≥ ${S.minEmailsPerSender} emails).`, '');\nconst byLabel = {};\nfor (const p of S.planned) (byLabel[p.label] = byLabel[p.label] || []).push(p);\nL.push(S.dryRun ? '## Planned filters' : '## Filters created');\nfor (const [label, items] of Object.entries(byLabel)) {\n  L.push(`**${label}**`);\n  for (const p of items) {\n    const ok = S.dryRun || S.result.createdFilters.some(f => f.sender === p.sender);\n    L.push(`- ${ok ? '' : '❌ '}\\`from:${p.sender}\\` (${p.name}, ${p.count} emails)`);\n  }\n  L.push('');\n}\nif (!S.planned.length) L.push('_Nothing new to organise._', '');\nconst skipped = S.candidates.filter(c => !S.assignments[c.key] || S.assignments[c.key] === 'none');\nif (skipped.length) L.push('## Left unlabelled', ...skipped.map(c => `- ${c.key} (${c.name}, ${c.count})`), '');\nif (S.result.createdLabels.length) L.push(`**New labels:** ${S.result.createdLabels.join(', ')}`, '');\nif (S.result.errors.length) L.push('## Problems', ...S.result.errors.map(e => `- ${e}`), '');\nL.push('## Undo', '- Gmail → Settings → **Filters and Blocked Addresses** → delete the filter.',\n  '- Labels: Gmail → Settings → **Labels** → remove.',\n  '- To label **older** mail too: open a filter → Continue → tick **Also apply filter to matching conversations**.');\nfs.mkdirSync(S.logFolder, { recursive: true });\nfs.writeFileSync(S.logFile, L.join('\\n'), 'utf8');\nreturn [{ json: { log: S.logFile.replace('/vault', 'Vault'), dryRun: S.dryRun, planned: S.planned.length, created: S.result.createdFilters.length } }];\n"
+      },
+      "id": "d53bdc1f-754f-4eb2-ba25-dfa2cfca5c69",
+      "name": "Write log note",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1390,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Every 30 minutes": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test run": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Already done this week?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already done this week?": {
+      "main": [
+        [
+          {
+            "node": "Collect senders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect senders": {
+      "main": [
+        [
+          {
+            "node": "Classify senders (Ollama)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify senders (Ollama)": {
+      "main": [
+        [
+          {
+            "node": "Create labels & filters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create labels & filters": {
+      "main": [
+        [
+          {
+            "node": "Write log note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Lisbon",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": []
+}

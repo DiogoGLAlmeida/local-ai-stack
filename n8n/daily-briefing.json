@@ -1,0 +1,273 @@
+{
+  "name": "Daily Briefing → Obsidian",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "4c745b60-f305-4de2-8e47-01bb52b555ca",
+      "name": "Every 30 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "18c41d89-22a9-455b-85d6-dfcd240bc2fd",
+      "name": "Test run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tz = 'Europe/Lisbon';\nconst now = $now.setZone(tz);\nreturn [{ json: {\n  date: now.toFormat('yyyy-MM-dd'),\n  dayName: now.toFormat('cccc, d LLLL yyyy'),\n  tz,\n  vaultFolder: '/vault/Daily',\n  city: 'Guimarães', lat: 41.4425, lon: -8.2918,\n  ollamaUrl: 'http://host.docker.internal:11434',\n  model: 'qwen3.5:9b',\n  googleMcpUrl: 'http://mcp-google:8000/mcp',\n  githubRepos: ['your-user/your-repo'],\n  hoursBack: 24,\n  itemsPerFeed: 4,\n  feeds: {\n    'Local AI': [\n      'https://github.com/ollama/ollama/releases.atom',\n      'https://huggingface.co/blog/feed.xml',\n    ],\n    'Cybersecurity': [\n      'https://www.bleepingcomputer.com/feed/',\n      'https://feeds.feedburner.com/TheHackersNews',\n    ],\n    'Tech': [\n      'https://feeds.arstechnica.com/arstechnica/index',\n      'https://www.theverge.com/rss/index.xml',\n    ],\n    'CS2 / Esports': [\n      'https://www.hltv.org/rss/news',\n    ],\n  },\n  sections: {},\n}}];\n"
+      },
+      "id": "ba667e20-1071-4923-b57a-e416d26b1026",
+      "name": "Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst path = require('path');\nconst s = $input.first().json;\nconst file = path.join(s.vaultFolder, `${s.date} Briefing.md`);\nlet manual = false;\ntry { manual = $('Test run').isExecuted; } catch (e) { manual = false; }\nif (!manual) {\n  if (fs.existsSync(file)) return [];\n  if ($now.setZone(s.tz).hour < 6) return [];\n}\nreturn [{ json: { ...s, file, manual } }];\n"
+      },
+      "id": "9c89e692-1fa2-44cd-86be-5499cde3ad50",
+      "name": "Already done today?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst codes = {0:'clear sky',1:'mainly clear',2:'partly cloudy',3:'overcast',45:'fog',48:'fog',\n  51:'light drizzle',53:'drizzle',55:'heavy drizzle',61:'light rain',63:'rain',65:'heavy rain',\n  66:'freezing rain',67:'freezing rain',71:'light snow',73:'snow',75:'heavy snow',80:'rain showers',\n  81:'rain showers',82:'violent rain showers',95:'thunderstorm',96:'thunderstorm with hail',99:'thunderstorm with hail'};\ntry {\n  const url = 'https://api.open-meteo.com/v1/forecast'\n    + `?latitude=${s.lat}&longitude=${s.lon}`\n    + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max'\n    + `&timezone=${encodeURIComponent(s.tz)}&forecast_days=1`;\n  const r = await this.helpers.httpRequest({ url, json: true });\n  const d = r.daily;\n  s.sections.weather = {\n    text: `${s.city}: ${codes[d.weather_code[0]] ?? 'code ' + d.weather_code[0]}, `\n      + `${Math.round(d.temperature_2m_min[0])}–${Math.round(d.temperature_2m_max[0])} °C, `\n      + `rain chance ${d.precipitation_probability_max[0]}%, wind up to ${Math.round(d.wind_speed_10m_max[0])} km/h`,\n  };\n} catch (e) {\n  s.sections.weather = { error: e.message };\n}\nreturn [{ json: s }];\n"
+      },
+      "id": "bb418d1a-8496-4423-80d0-8d15c1afa693",
+      "name": "Weather",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst since = Date.now() - s.hoursBack * 3600 * 1000;\nconst decode = (t) => (t || '')\n  .replace(/<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>/g, '$1')\n  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"')\n  .replace(/&#39;|&apos;/g, \"'\").replace(/&#(\\d+);/g, (m, n) => String.fromCharCode(n))\n  .replace(/&amp;/g, '&')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/\\s+/g, ' ').trim();\nconst tag = (block, name) => {\n  const m = block.match(new RegExp(`<${name}[^>]*>([\\\\s\\\\S]*?)</${name}>`, 'i'));\n  return m ? m[1] : '';\n};\nconst news = {}; const errors = [];\nfor (const [category, urls] of Object.entries(s.feeds)) {\n  news[category] = [];\n  for (const url of urls) {\n    try {\n      let xml = await this.helpers.httpRequest({ url, json: false,\n        headers: { 'User-Agent': 'Mozilla/5.0 (local daily briefing)' } });\n      if (typeof xml !== 'string') xml = Buffer.isBuffer(xml) ? xml.toString('utf8') : String(xml);\n      const blocks = xml.match(/<item[\\s>][\\s\\S]*?<\\/item>|<entry[\\s>][\\s\\S]*?<\\/entry>/gi) || [];\n      const source = decode(tag(xml.split(/<item|<entry/i)[0], 'title')) || new URL(url).hostname;\n      let count = 0;\n      for (const b of blocks) {\n        if (count >= s.itemsPerFeed) break;\n        const title = decode(tag(b, 'title'));\n        let link = decode(tag(b, 'link'));\n        if (!link) { const m = b.match(/<link[^>]*href=\"([^\"]+)\"/i); link = m ? m[1] : ''; }\n        const dateStr = decode(tag(b, 'pubDate') || tag(b, 'published') || tag(b, 'updated') || tag(b, 'dc:date'));\n        const t = Date.parse(dateStr);\n        if (!isNaN(t) && t < since) continue;\n        const summary = decode(tag(b, 'description') || tag(b, 'summary') || tag(b, 'content')).slice(0, 300);\n        if (title && link) { news[category].push({ title, link, source, summary }); count++; }\n      }\n    } catch (e) {\n      errors.push(`${url}: ${e.message}`);\n    }\n  }\n}\ns.sections.news = { items: news, errors };\nreturn [{ json: s }];\n"
+      },
+      "id": "19ac58e1-65a8-4a47-a329-274bcf4afa35",
+      "name": "News (RSS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst token = $env.GITHUB_TOKEN;\nconst since = new Date(Date.now() - s.hoursBack * 3600 * 1000).toISOString();\nconst headers = { 'Accept': 'application/vnd.github+json', 'User-Agent': 'local-daily-briefing',\n  'X-GitHub-Api-Version': '2022-11-28' };\nif (token) headers['Authorization'] = `Bearer ${token}`;\nconst repos = [];\nfor (const repo of s.githubRepos) {\n  const r = { repo, issues: [], prs: [], commits: [] };\n  try {\n    const issues = await this.helpers.httpRequest({ url: `https://api.github.com/repos/${repo}/issues?state=open&per_page=30`, headers, json: true });\n    for (const i of issues) {\n      const entry = { number: i.number, title: i.title, url: i.html_url };\n      (i.pull_request ? r.prs : r.issues).push(entry);\n    }\n    const commits = await this.helpers.httpRequest({ url: `https://api.github.com/repos/${repo}/commits?since=${since}&per_page=10`, headers, json: true });\n    r.commits = commits.map(c => ({ sha: c.sha.slice(0, 7), message: c.commit.message.split('\\n')[0], url: c.html_url }));\n  } catch (e) {\n    r.error = e.message + (token ? '' : ' (no GITHUB_TOKEN set)');\n  }\n  repos.push(r);\n}\ns.sections.github = repos;\nreturn [{ json: s }];\n"
+      },
+      "id": "6dcba543-5279-44de-8c8b-71ca5ea3517e",
+      "name": "GitHub",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst url = s.googleMcpUrl;\nconst email = $env.USER_GOOGLE_EMAIL;\nconst helpers = this.helpers;\nlet sid = null; let nextId = 0;\n\nconst parse = (body) => {\n  if (Buffer.isBuffer(body)) body = body.toString('utf8');\n  if (typeof body !== 'string') return body || {};\n  const t = body.trim();\n  if (t.startsWith('{')) return JSON.parse(t);\n  const datas = t.split('\\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim());\n  for (const d of datas.reverse()) { try { const j = JSON.parse(d); if (j.result || j.error) return j; } catch (e) {} }\n  return {};\n};\nasync function rpc(method, params, notify = false) {\n  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };\n  if (sid) headers['mcp-session-id'] = sid;\n  const msg = notify ? { jsonrpc: '2.0', method, params } : { jsonrpc: '2.0', id: ++nextId, method, params };\n  const res = await helpers.httpRequest({ method: 'POST', url, headers, body: JSON.stringify(msg),\n    json: false, returnFullResponse: true, ignoreHttpStatusErrors: true });\n  const h = res.headers || {};\n  sid = sid || h['mcp-session-id'] || h['Mcp-Session-Id'];\n  if (notify) return null;\n  const j = parse(res.body);\n  if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));\n  return j.result;\n}\nconst textOf = (result) => (result?.content || []).map(c => c.text || '').join('\\n').trim();\n\nconst out = {};\ntry {\n  await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'n8n-briefing', version: '1' } });\n  await rpc('notifications/initialized', {}, true);\n  const tools = ((await rpc('tools/list', {}))?.tools || []).map(t => t.name);\n  const start = $now.setZone(s.tz).startOf('day');\n  const calls = {\n    calendar: ['get_events', { user_google_email: email, calendar_id: 'primary',\n      time_min: start.toISO(), time_max: start.plus({ days: 1 }).toISO(), max_results: 20 }],\n    tasks: ['list_tasks', { user_google_email: email, task_list_id: '@default', show_completed: false, max_results: 20 }],\n    email: ['search_gmail_messages', { user_google_email: email,\n      query: 'is:unread newer_than:2d -category:promotions -category:social -category:updates', page_size: 10 }],\n  };\n  for (const [key, [name, args]] of Object.entries(calls)) {\n    if (!tools.includes(name)) { out[key] = { error: `tool ${name} not found (available: ${tools.join(', ')})` }; continue; }\n    try {\n      const r = await rpc('tools/call', { name, arguments: args });\n      const text = textOf(r).slice(0, 4000);\n      if (/ACTION REQUIRED|Authentication Needed/i.test(text)) out[key] = { error: 'Google sign-in needed (see README: Google sign-in link)' };\n      else if (r?.isError) out[key] = { error: text.slice(0, 300) };\n      else out[key] = { text };\n    } catch (e) { out[key] = { error: e.message }; }\n  }\n} catch (e) {\n  out.error = `Google server not reachable: ${e.message}`;\n}\ns.sections.google = out;\nreturn [{ json: s }];\n"
+      },
+      "id": "38e66374-9e74-4c1d-af63-5cb0cf18cb1e",
+      "name": "Calendar, Tasks, Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst g = s.sections.google || {};\nconst a = s.sections.app || {};\nconst part = (o) => o?.text ? o.text : (o?.error ? `[unavailable: ${o.error}]` : '[no data]');\nconst newsLines = Object.entries(s.sections.news?.items || {})\n  .map(([cat, items]) => `## ${cat}\\n` + (items.length ? items.map(i => `- ${i.title} (${i.source}): ${i.summary}`).join('\\n') : '- nothing new'))\n  .join('\\n');\nconst gh = (s.sections.github || []).map(r => `${r.repo}: ${r.issues.length} open issues, ${r.prs.length} open PRs, `\n  + `${r.commits.length} new commits${r.commits.length ? ' (' + r.commits.map(c => c.message).join('; ') + ')' : ''}`).join('\\n');\n\nconst prompt = `Today is ${s.dayName}. Write my daily briefing in English, in Markdown, using ONLY the data below.\nNever invent events, tasks, emails, news or numbers. If a part says unavailable or no data, say so in one short line.\nCopy facts exactly: keep the same words for weather (\"light rain\" stays \"light rain\", never \"heavy\"), counts and names.\nKeep each news item under the category it is listed in (for example, security stories are Security, not Tech).\n\nOutput exactly these two sections:\n### Highlights\n3 to 5 short bullets, each starting with its category in bold (**Weather**, **Calendar**, **Tasks**, **Email**, **GitHub**, **CI**, **Security**, **Politics**, **Markets**, **Local AI**, **Tech**, **CS2**, **YouTube**): the most important things for my day.\nOnly include things that actually happened or are coming up. NEVER write a highlight that just says there is nothing (no \"no events\", \"no tasks\", \"nothing important\"). A failed CI run or a newly exploited (KEV) bug affecting my software comes first.\n### Today\n**Calendar:** bullets with time and title (or \"No events\").\n**Tasks:** bullets (or \"No open tasks\").\n**Email:** bullets \"Sender – Subject\" for messages that look personal or important; skip newsletters (or \"Nothing important\").\n\nDATA\n[Weather] ${s.sections.weather?.text || 'unavailable'}\n[Calendar]\n${part(g.calendar)}\n[Tasks]\n${part(g.tasks)}\n[Unread email]\n${part(g.email)}\n[GitHub]\n${gh || 'no data'}\n[News]\n${newsLines}\n[CI runs] ${(a.ci || []).map(w => `${w.repo} ${w.name}@${w.branch}: ${w.result}`).join('; ') || 'no data'}\n[Newly exploited vulnerabilities (CISA KEV)] ${(a.kev || []).map(k => `${k.id} ${k.what}${k.ransomware ? ' (ransomware)' : ''}`).join('; ') || 'none'}\n[New CVEs in software I use] ${(a.watch || []).map(x => `${x.id} CVSS ${x.cvss ?? '?'} (${x.watch.join('/')})${x.kev ? ' KEV' : ''}`).join('; ') || 'none'}\n[Markets] ${(a.markets || []).join(', ') || 'no data'}\n[Politics] ${(a.politics || []).map(p => `${p.region}: ${p.text.replace(/\\n/g, ' ')}`).join(' | ').slice(0, 3000) || 'no data'}\n[New YouTube videos] ${(a.youtube || []).map(v => `${v.channel}: ${v.title} (${v.verdict})`).join('; ') || 'none'}`;\n\ntry {\n  const r = await this.helpers.httpRequest({ method: 'POST', url: `${s.ollamaUrl}/api/chat`, json: true, timeout: 300000,\n    body: { model: s.model, stream: false, think: false, keep_alive: '2m',\n      options: { num_ctx: 16384, temperature: 0.2 },\n      messages: [{ role: 'user', content: prompt }] } });\n  s.summary = (r.message?.content || '').trim();\n} catch (e) {\n  s.summary = `_Summary unavailable (Ollama: ${e.message})._`;\n}\nreturn [{ json: s }];\n"
+      },
+      "id": "b83a1989-dfdb-4c1b-b0e4-1a6020dec9c0",
+      "name": "Summarize (Ollama)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst s = $input.first().json;\nconst L = [];\nL.push('---', `date: ${s.date}`, 'tags: [briefing]', '---', '', `# Briefing · ${s.dayName}`, '');\nL.push(`**Weather:** ${s.sections.weather?.text || '_unavailable_'}`, '');\nL.push(s.summary || '', '');\n\nL.push('### GitHub');\nfor (const r of s.sections.github || []) {\n  L.push(`**[${r.repo}](https://github.com/${r.repo})**`);\n  if (r.error) { L.push(`- _unavailable: ${r.error}_`); continue; }\n  L.push(`- Open issues (${r.issues.length}): ` + (r.issues.slice(0, 8).map(i => `[#${i.number} ${i.title}](${i.url})`).join(', ') || 'none'));\n  L.push(`- Open PRs (${r.prs.length}): ` + (r.prs.map(p => `[#${p.number} ${p.title}](${p.url})`).join(', ') || 'none'));\n  L.push(`- New commits (${r.commits.length}): ` + (r.commits.map(c => `[${c.sha}](${c.url}) ${c.message}`).join('; ') || 'none'));\n}\nL.push('');\n\nconst A = s.sections.app || {};\nif ((A.ci || []).length) {\n  L.push('### CI');\n  for (const w of A.ci) L.push(`- ${w.result === 'success' ? '✅' : w.result === 'failure' ? '❌' : '⏳'} ${w.repo} · ${w.name} @ ${w.branch}: [${w.result}](${w.url})`);\n  L.push('');\n}\nif ((A.kev || []).length || (A.watch || []).length) {\n  L.push('### Threat intel');\n  for (const k of A.kev || []) L.push(`- **KEV** [${k.id}](https://nvd.nist.gov/vuln/detail/${k.id}) ${k.what}${k.ransomware ? ' · ransomware' : ''}`);\n  for (const x of A.watch || []) L.push(`- **Your stack** [${x.id}](https://nvd.nist.gov/vuln/detail/${x.id}) CVSS ${x.cvss ?? '?'} · ${x.watch.join(', ')}${x.kev ? ' · KEV' : ''}`);\n  L.push('');\n}\nif ((A.markets || []).length || A.marketNews) {\n  L.push('### Markets');\n  if ((A.markets || []).length) L.push(A.markets.join(' · '), '');\n  if (A.marketNews) L.push(A.marketNews, '');\n  L.push('<small>Delayed quotes · not investment advice</small>', '');\n}\nif ((A.politics || []).length) {\n  L.push('### Politics');\n  for (const p of A.politics) L.push(`**${p.region}**`, p.text, '');\n}\nif ((A.youtube || []).length) {\n  L.push('### YouTube');\n  for (const v of A.youtube) L.push(`- [${v.title}](${v.link}) · ${v.channel} · _${v.verdict}${v.why ? ': ' + v.why : ''}_`);\n  L.push('');\n}\nL.push('### News');\nfor (const [cat, items] of Object.entries(s.sections.news?.items || {})) {\n  L.push(`**${cat}**`);\n  if (!items.length) L.push('- nothing new');\n  for (const i of items) L.push(`- [${i.title}](${i.link}) · ${i.source}`);\n  L.push('');\n}\nif (s.sections.news?.errors?.length) L.push(`<small>Feeds that failed: ${s.sections.news.errors.join(' | ')}</small>`, '');\n\nL.push('---', `_Generated ${$now.setZone(s.tz).toFormat('HH:mm')} by n8n + ${s.model}. Links come straight from the sources._`);\n\nfs.mkdirSync(s.vaultFolder, { recursive: true });\nfs.writeFileSync(s.file, L.join('\\n'), 'utf8');\nreturn [{ json: { written: s.file.replace('/vault', 'Vault'), date: s.date } }];\n"
+      },
+      "id": "1f2a7df7-935e-458f-a109-2df99a7e9831",
+      "name": "Write Obsidian note",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst s = $input.first().json;\nconst read = (f) => { try { return JSON.parse(fs.readFileSync(`/home/node/.n8n/${f}`, 'utf8')); } catch (e) { return null; } };\nconst day = 864e5, now = Date.now();\nconst news = read('mailapp-news.json'), vul = read('mailapp-vulns.json'), yt = read('mailapp-youtube.json'), gh = read('mailapp-github.json');\nconst app = {};\nif (news?.markets?.length) app.markets = news.markets.filter(m => !m.error && m.change != null)\n  .map(m => `${m.name} ${m.change >= 0 ? '▲' : '▼'}${Math.abs(m.change).toFixed(2)}%`);\nif (news?.summaries) {\n  app.politics = Object.entries(news.summaries).filter(([k]) => k.startsWith('Politics/')).map(([k, v]) => ({ region: k.split('/')[1], text: v.text }));\n  if (news.summaries.Markets) app.marketNews = news.summaries.Markets.text;\n}\nif (vul) {\n  const since = new Date(now - 2 * day).toISOString().slice(0, 10);\n  app.kev = (vul.kev || []).filter(k => k.added >= since).map(k => ({ id: k.id, what: `${k.vendor} ${k.product} – ${k.name}`, ransomware: k.ransomware }));\n  app.watch = Object.values(vul.cves || {}).filter(x => x.watch?.length && Date.parse(x.published) >= now - day).map(x => ({ id: x.id, cvss: x.cvss, watch: x.watch, kev: x.kev }));\n}\nif (gh?.repos) app.ci = gh.repos.flatMap(r => (r.health || []).map(w => ({ repo: r.repo, name: w.name, branch: w.branch, result: w.status !== 'completed' ? w.status : w.conclusion, url: w.url })));\nif (yt?.videos) app.youtube = yt.videos.filter(v => v.t >= now - day && v.verdict !== 'skip').map(v => ({ title: v.title, channel: v.channel, link: v.link, verdict: v.verdict, why: v.why }));\ns.sections.app = app;\nreturn [{ json: s }];\n"
+      },
+      "id": "ce4b84ee-23e9-4f36-ad22-f54671f4eebb",
+      "name": "App data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1230,
+        280
+      ]
+    }
+  ],
+  "connections": {
+    "Every 30 minutes": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test run": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Already done today?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already done today?": {
+      "main": [
+        [
+          {
+            "node": "Weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weather": {
+      "main": [
+        [
+          {
+            "node": "News (RSS)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "News (RSS)": {
+      "main": [
+        [
+          {
+            "node": "GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub": {
+      "main": [
+        [
+          {
+            "node": "App data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calendar, Tasks, Email": {
+      "main": [
+        [
+          {
+            "node": "Summarize (Ollama)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize (Ollama)": {
+      "main": [
+        [
+          {
+            "node": "Write Obsidian note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "App data": {
+      "main": [
+        [
+          {
+            "node": "Calendar, Tasks, Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Lisbon",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": []
+}

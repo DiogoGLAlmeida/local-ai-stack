@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mail · Local AI</title>
+<style>
+:root{--bg:#111316;--panel:#181b20;--line:#262a31;--text:#e6e8eb;--dim:#8b929c;--acc:#7aa2ff;--warn:#ffb86b}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:grid;grid-template-columns:210px 390px 1fr;overflow:hidden}
+nav{border-right:1px solid var(--line);padding:14px 10px;overflow:auto}nav h1{font-size:15px;margin:0 8px 14px}
+nav button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;color:var(--text);padding:6px 10px;border-radius:7px;cursor:pointer;font:inherit}
+nav button:hover{background:var(--panel)}nav button.on{background:#222836;color:#fff}nav .dot{width:9px;height:9px;border-radius:50%;flex:none}
+nav .c{margin-left:auto;color:var(--dim);font-size:12px}nav .c.hot{color:var(--acc);font-weight:600}
+nav .sec{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin:14px 10px 6px}
+#list{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+#bar{padding:10px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}#bar input[type=text]{flex:1;padding:8px 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit}
+#bar label{color:var(--dim);font-size:12px;white-space:nowrap;cursor:pointer}
+#digest{padding:10px 14px;border-bottom:1px solid var(--line);background:#161b24;color:#c9d3e6;display:none;font-size:13px}
+#items{overflow:auto;flex:1}.it{padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer}.it:hover{background:var(--panel)}.it.sel{background:#1d2330;box-shadow:inset 3px 0 var(--acc)}
+.it .f{display:flex;justify-content:space-between;gap:8px}.it .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.it .d{color:var(--dim);font-size:12px;white-space:nowrap}
+.it .s{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.it.new .n::before{content:"● ";color:var(--acc)}.it.seen .n{font-weight:400}
+.it .r{color:var(--warn);font-size:12px;margin-top:2px}.badge{background:#2a3140;color:var(--dim);border-radius:9px;padding:0 6px;font-size:11px;margin-left:6px}
+.tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:9px;margin:4px 4px 0 0;color:#111}
+#more{margin:10px auto;display:block}#main{overflow:auto;padding:22px 28px}
+#main h2{margin:0 0 6px;font-size:19px}h3{margin:20px 0 8px;font-size:14px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+.meta{color:var(--dim);margin-bottom:14px}.acts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.btn{background:var(--panel);border:1px solid var(--line);color:var(--text);padding:6px 12px;border-radius:7px;cursor:pointer;font:inherit;text-decoration:none;font-size:13px}.btn:hover{border-color:var(--acc)}
+kbd{font-size:10px;color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:4px}
+.box{background:#18202e;border:1px solid #2a3550;border-radius:9px;padding:12px 14px;margin-bottom:16px;white-space:pre-wrap}
+pre{white-space:pre-wrap;word-wrap:break-word;font:inherit;margin:0}.empty{color:var(--dim);padding:30px;text-align:center}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--dim);cursor:pointer;user-select:none;position:sticky;top:0;background:var(--bg)}
+.score{font-weight:700}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+#ask{display:flex;gap:8px;margin:8px 0 16px}#ask input{flex:1;padding:9px 11px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit}
+a{color:var(--acc)}.toast{position:fixed;bottom:18px;right:18px;background:#222836;border:1px solid var(--line);padding:10px 14px;border-radius:9px;max-width:420px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}.chip{background:var(--panel);border:1px solid var(--line);color:var(--text);padding:4px 12px;border-radius:14px;cursor:pointer;font:inherit;font-size:13px}.chip.on{background:#222836;border-color:var(--acc)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:6px 0 16px}.tile{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px 12px}.tile .v{font-size:17px;font-weight:600}.up{color:#43d692}.down{color:#fb6b5b}
+.news{border-bottom:1px solid var(--line);padding:9px 2px;display:flex;gap:10px;align-items:flex-start}.news .tx{flex:1}.news a{color:var(--text);text-decoration:none;font-weight:500}.news a:hover{color:var(--acc)}.news .sm{color:var(--dim);font-size:12px;margin-top:2px}
+.lean{font-size:11px;padding:0 6px;border-radius:9px;margin-left:6px;border:1px solid var(--line)}.lean.left{color:#7aa2ff}.lean.centre{color:#c9c9c9}.lean.right{color:#ffb86b}
+.sev{font-weight:700;padding:0 6px;border-radius:6px;font-size:12px}.sev.c{background:#5a1d1d;color:#ff8a80}.sev.h{background:#4a2d12;color:#ffb86b}.sev.m{background:#3d3a14;color:#fad165}.sev.l{background:#1f2a1f;color:#8bd48b}
+.kev{background:#7a1f1f;color:#fff;font-size:11px;padding:0 6px;border-radius:6px;margin-left:4px}.rw{background:#3b1f4a;color:#e0b0ff;font-size:11px;padding:0 6px;border-radius:6px;margin-left:4px}.wl{background:#1d3550;color:#9cc7ff;font-size:11px;padding:0 6px;border-radius:6px;margin-left:4px}
+.ttp{display:inline-block;font-size:11px;border:1px solid #3a4560;border-radius:6px;padding:0 5px;margin:2px 3px 0 0;color:#b9c6e8;text-decoration:none}tr.cl{cursor:pointer}tr.cl:hover td{background:var(--panel)}
+.vid{display:grid;grid-template-columns:200px 1fr;gap:14px;border-bottom:1px solid var(--line);padding:12px 0}.vid img{width:200px;border-radius:8px}.vid ul{margin:6px 0 0;padding-left:18px}
+.vd{font-size:11px;padding:0 7px;border-radius:9px;margin-left:6px}.vd.watch{background:#1f3d2a;color:#7fe0a0}.vd.skim{background:#3d3a14;color:#fad165}.vd.skip{background:#2a2a2a;color:#999}
+.ci{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}.ci.success{background:#43d692}.ci.failure,.ci.timed_out,.ci.startup_failure{background:#fb4c2f}.ci.cancelled,.ci.skipped{background:#777}.ci.run{background:#fad165}
+.rlgrid{display:grid;grid-template-columns:330px 1fr;gap:18px}.rlitem{padding:9px 10px;border-bottom:1px solid var(--line);cursor:pointer}.rlitem:hover,.rlitem.sel{background:var(--panel)}.rlitem.done{opacity:.5}
+.md h1,.md h2,.md h3{font-size:16px;margin:16px 0 6px}.md p{margin:8px 0}.md{line-height:1.6}
+.links div{display:flex;gap:8px;align-items:center;margin:4px 0}.links span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-size:12px}
+</style></head><body>
+<nav><h1>📬 Mail</h1><div id="views"></div><div class="sec">Labels</div><div id="labels"></div><div class="sec">Tools</div><div id="tools"></div></nav>
+<section id="list"><div id="bar"><input type="text" id="search" placeholder="Search (Gmail syntax)  /"><label><input type="checkbox" id="threads"> Threads</label></div><div id="digest"></div><div id="items"></div></section>
+<main id="main"></main>
+<script>const API = '/api';
+const COLORS = {Finance:'#16a766',Shopping:'#ffad47',Gaming:'#a479e2',Dev:'#4a86e8',Security:'#fb4c2f',Jobs:'#43d692',Education:'#fad165',Newsletters:'#999',Social:'#f691b3',Travel:'#ccc',Personal:'#fff'};
+const VIEWS = [['needs','Needs me',null,'#ffb86b'],['new','New','in:inbox is:unread','#7aa2ff'],['inbox','Inbox','in:inbox','#8b929c'],
+  ['unl','Unlabelled','in:inbox has:nouserlabels','#555'],['att','Attachments','has:attachment -in:spam -in:trash','#555'],['all','Everything','-in:spam -in:trash','#555']];
+const TOOLS = [['news','📰  News'],['intel','🛡  Threat intel'],['yt','▶  YouTube'],['gh','🐙  GitHub'],['rl','📚  Read later'],['today','🗓  Today'],['jobs','💼  Job board'],['ask','💬  Ask my inbox'],['drive','📁  Drive (30 days)']];
+const store = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || JSON.stringify(d)); } catch (e) { return d; } };
+const keep = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+let seen = store('seen', {}), done = store('done', {});
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $ = id => document.getElementById(id);
+const api = async p => { const r = await fetch(API + '?' + new URLSearchParams(p), {headers: {'X-Mail-App': '1'}}); const j = await r.json(); if (j.error) throw new Error(j.error); return j; };
+const toast = t => { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 4000); };
+const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '#';
+const fmtDate = d => { const t = new Date(d); if (isNaN(t)) return ''; return t.toDateString() === new Date().toDateString() ? t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : t.toLocaleDateString([], {day:'numeric',month:'short'}); };
+let view = 'needs', q = null, next = null, userLabels = [], rows = [], idx = -1, current = null, digest = {};
+
+function navBtn(parent, key, name, color, onclick) {
+  const b = document.createElement('button'); b.dataset.key = key;
+  b.innerHTML = (color ? `<span class="dot" style="background:${color}"></span>` : '') + `${esc(name)}<span class="c"></span>`;
+  b.onclick = () => { document.querySelectorAll('nav button').forEach(x => x.classList.remove('on')); b.classList.add('on'); onclick(); };
+  parent.appendChild(b); return b;
+}
+const setCount = (key, n) => { const el = document.querySelector(`nav button[data-key="${CSS.escape(key)}"] .c`); if (el) { el.textContent = n ? (n >= 100 ? '99+' : n) : ''; el.classList.toggle('hot', !!n); } };
+VIEWS.forEach(([k, n, qq, c]) => navBtn($('views'), k, n, c, () => openView(k, qq)));
+TOOLS.forEach(([k, n]) => navBtn($('tools'), k, n, null, () => tool(k)));
+document.querySelector('nav button').classList.add('on');
+
+async function refreshLabels() {
+  try {
+    const j = await api({action:'labels'});
+    if (!userLabels.length) j.labels.forEach(l => navBtn($('labels'), 'l:' + l.name, l.name, COLORS[l.name] || '#888', () => openView('l:' + l.name, `label:"${l.name}"`)));
+    userLabels = j.labels.map(l => l.name); j.labels.forEach(l => setCount('l:' + l.name, l.unread)); setCount('new', j.newCount);
+  } catch (e) { $('labels').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  try { const n = (await api({action:'needs'})).messages.filter(m => !done[m.id]).length; setCount('needs', n); } catch (e) {}
+}
+async function loadDigest() { try { digest = await api({action:'digest'}); } catch (e) {} }
+
+let navView = 'needs', navQ = null;
+function openView(k, query) { view = navView = k; q = navQ = query; $('search').value = ''; showDigest(); load(); }
+function showDigest() {
+  const d = $('digest'); const l = view.startsWith('l:') ? view.slice(2) : null; const t = l && digest.labels && digest.labels[l];
+  d.style.display = t ? 'block' : 'none'; d.innerHTML = t ? `<b>Today in ${esc(l)}:</b> ${esc(t)}` : '';
+}
+let loadSeq = 0;
+async function load(more) {
+  const box = $('items'); const my = ++loadSeq; const myView = view, myQ = q;
+  if (!more) { box.innerHTML = '<div class="empty">Loading…</div>'; rows = []; idx = -1; }
+  try {
+    let msgs;
+    if (myView === 'needs' && !myQ) { msgs = (await api({action:'needs'})).messages.filter(m => !done[m.id]); if (my !== loadSeq) return; next = null; }
+    else { const j = await api(more ? {q: myQ, page: next} : {q: myQ}); if (my !== loadSeq) return; msgs = j.messages; next = j.next; }
+    if (!more) box.innerHTML = '';
+    $('more')?.remove();
+    let list = msgs;
+    if ($('threads').checked) {
+      const g = {}; for (const m of msgs) { const k = m.threadId || m.id; (g[k] = g[k] || []).push(m); }
+      list = Object.values(g).map(ms => ({...ms[0], count: ms.length, unread: ms.some(x => x.unread), thread: true}));
+    }
+    if (!list.length && !more) box.innerHTML = `<div class="empty">${view === 'needs' ? 'Nothing needs you right now 🎉' : 'Nothing here 🎉'}</div>`;
+    for (const m of list) {
+      const d = document.createElement('div'); d.className = 'it' + (m.unread ? ' new' : '') + (seen[m.id] ? ' seen' : '');
+      const tags = (m.labels || []).filter(l => userLabels.includes(l)).map(l => `<span class="tag" style="background:${COLORS[l]||'#888'}">${esc(l)}</span>`).join('');
+      d.innerHTML = `<div class="f"><span class="n">${esc(m.fromName)}${m.count > 1 ? `<span class="badge">${m.count}</span>` : ''}</span><span class="d">${fmtDate(m.date)}</span></div>
+        <div class="s">${esc(m.subject)}</div>${m.reason ? `<div class="r">⚑ ${esc(m.reason)}</div>` : ''}${tags}`;
+      const i = rows.length; rows.push({m, el: d}); d.onclick = () => select(i);
+      box.appendChild(d);
+    }
+    if (next) { const b = document.createElement('button'); b.id = 'more'; b.className = 'btn'; b.textContent = 'Load more'; b.onclick = () => load(true); box.appendChild(b); }
+  } catch (e) { if (my === loadSeq) box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+function select(i) {
+  if (i < 0 || i >= rows.length) return; idx = i;
+  rows.forEach(r => r.el.classList.remove('sel')); const {m, el} = rows[i];
+  el.classList.add('sel', 'seen'); el.scrollIntoView({block: 'nearest'}); seen[m.id] = Date.now(); keep('seen', seen); openMail(m);
+}
+let openSeq = 0;
+async function openMail(m) {
+  current = m; const my = ++openSeq; const isNeeds = view === 'needs';
+  $('main').innerHTML = `<h2>${esc(m.subject)}</h2><div class="meta">${esc(m.from)} · ${esc(m.date)}</div>
+    ${m.reason ? `<div class="box">⚑ Needs you: ${esc(m.reason)}</div>` : ''}
+    <div class="acts">
+      <button class="btn" id="b-sum">✨ Summarise<kbd>s</kbd></button>
+      <button class="btn" id="b-task">➕ Add as task<kbd>t</kbd></button>
+      <button class="btn" id="b-later">📥 Read later<kbd>l</kbd></button>
+      <button class="btn" id="b-links">🔗 Links → save article</button>
+      ${isNeeds ? '<button class="btn" id="b-done">✓ Done<kbd>e</kbd></button>' : ''}
+      <a class="btn" href="${esc(safeUrl(m.link))}" target="_blank" rel="noopener">Reply / archive in Gmail ↗</a></div>
+    <div id="sum" class="box" style="display:none"></div><div id="links" class="links"></div><pre id="body">Loading…</pre>`;
+  $('b-sum').onclick = summarise; $('b-task').onclick = addTask; $('b-later').onclick = readLater; $('b-links').onclick = links;
+  if (isNeeds) $('b-done').onclick = markDone;
+  try {
+    const t = m.thread && m.count > 1 ? (await api({action:'thread', id: m.threadId})).text : (await api({action:'read', id: m.id})).text;
+    if (my !== openSeq) return;
+    $('body').textContent = m.thread && m.count > 1 ? t : t.replace(/^[\s\S]*?\n\s*\n/, '');
+  } catch (e) { if (my === openSeq) $('body').textContent = e.message; }
+}
+async function summarise() { if (!current) return; const s = $('sum'); s.style.display = 'block'; s.textContent = 'Thinking…';
+  try { s.textContent = (await api({action:'summary', id: current.id})).summary; } catch (e) { s.textContent = e.message; } }
+async function addTask() { if (!current) return; try { await api({action:'addtask', title: current.subject, from: current.from, link: current.link}); toast('Added to Google Tasks'); } catch (e) { toast(e.message); } }
+async function readLater() { if (!current) return; toast('Saving…'); try { toast('Saved: ' + (await api({action:'readlater', id: current.id, title: current.subject, link: current.link})).saved); } catch (e) { toast(e.message); } }
+function markDone() { if (!current) return; done[current.id] = Date.now(); keep('done', done); const i = idx; rows[i].el.remove(); rows.splice(i, 1);
+  rows.forEach((r, j) => r.el.onclick = () => select(j)); refreshLabels(); if (rows.length) select(Math.min(i, rows.length - 1)); else { $('main').innerHTML = '<div class="empty">All done 🎉</div>'; current = null; } }
+async function links() {
+  const box = $('links'); box.innerHTML = '<div class="empty">Finding links…</div>';
+  try {
+    const l = (await api({action:'links', id: current.id})).links;
+    box.innerHTML = l.length ? '<h3>Links in this email</h3>' : '<div class="empty">No article links found</div>';
+    for (const u of l) { const d = document.createElement('div'); d.innerHTML = `<button class="btn">📥 Save</button><span title="${esc(u)}">${esc(u)}</span>`;
+      d.querySelector('button').onclick = async () => { toast('Firecrawl is fetching the page…'); try { toast('Saved: ' + (await api({action:'savelink', url: u})).saved); } catch (e) { toast(e.message); } };
+      box.appendChild(d); }
+  } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+async function tool(k) {
+  const main = $('main'); current = null;
+  if (k === 'news') {
+    newsView();
+  } else if (k === 'intel') {
+    intelView();
+  } else if (k === 'yt') {
+    ytView();
+  } else if (k === 'gh') {
+    ghView();
+  } else if (k === 'rl') {
+    rlView();
+  } else if (k === 'today') {
+    main.innerHTML = '<h2>Today</h2><div id="ask"><input id="askq" placeholder="Ask my inbox… e.g. what did Fortinet send about the exam?"><button class="btn" id="askb">Ask</button></div><div id="answer"></div><div class="grid2"><div><h3>Calendar</h3><pre id="ev">Loading…</pre></div><div><h3>Tasks</h3><pre id="tk">Loading…</pre></div></div><h3>Digest</h3><div id="dg"></div>';
+    wireAsk();
+    api({action:'today'}).then(j => { $('ev').textContent = j.events; $('tk').textContent = j.tasks; }).catch(e => { $('ev').textContent = e.message; });
+    const L = digest.labels || {}; $('dg').innerHTML = Object.keys(L).length ? Object.entries(L).map(([l, t]) => `<p><b style="color:${COLORS[l]||'#888'}">${esc(l)}</b> · ${esc(t)}</p>`).join('') + `<p class="meta">Made ${esc(digest.made || '')}</p>` : '<p class="meta">The digest appears after the first background run after 06:00.</p>';
+  } else if (k === 'ask') {
+    main.innerHTML = '<h2>Ask my inbox</h2><div id="ask"><input id="askq" placeholder="e.g. when is my Zotero renewal? what did GitHub say about my token?"><button class="btn" id="askb">Ask</button></div><div id="answer"></div>';
+    wireAsk(); $('askq').focus();
+  } else if (k === 'jobs') {
+    main.innerHTML = '<h2>Job board</h2><div class="meta">Loading…</div>';
+    try {
+      const j = await api({action:'jobs'}); let sort = 'score', dir = -1; const dismissed = store('jobsHidden', {});
+      const render = () => {
+        const list = j.jobs.filter(x => !dismissed[x.key]).sort((a, b) => { const A = sort === 'date' ? new Date(a.date) : a[sort], B = sort === 'date' ? new Date(b.date) : b[sort]; return (A > B ? 1 : A < B ? -1 : 0) * dir; });
+        main.innerHTML = `<h2>Job board</h2><div class="meta">${list.length} jobs from LinkedIn alerts · scored against: ${esc(j.profile)}${j.updated ? ' · updated ' + fmtDate(j.updated) : ''}</div>
+          <table><thead><tr>${[['score','Fit'],['role','Role'],['company','Company'],['location','Location'],['mode','Mode'],['date','Date']].map(([k, n]) => `<th data-k="${k}">${n}${sort === k ? (dir < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('')}<th></th></tr></thead><tbody>
+          ${list.map(x => `<tr><td class="score" style="color:${x.score >= 75 ? '#43d692' : x.score >= 50 ? '#ffb86b' : '#8b929c'}">${x.score}</td><td><a href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener">${esc(x.role)}</a><div class="meta" style="margin:0">${esc(x.why)}</div></td><td>${esc(x.company)}</td><td>${esc(x.location)}</td><td>${esc(x.mode)}</td><td>${fmtDate(x.date)}</td><td><button class="btn" data-hide="${esc(x.key)}">✕</button></td></tr>`).join('')}
+          </tbody></table>${list.length ? '' : '<div class="empty">No jobs yet. The background job reads new LinkedIn alerts every 15 minutes.</div>'}`;
+        main.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => { const k = th.dataset.k; dir = sort === k ? -dir : (k === 'score' || k === 'date' ? -1 : 1); sort = k; render(); });
+        main.querySelectorAll('[data-hide]').forEach(b => b.onclick = () => { dismissed[b.dataset.hide] = 1; keep('jobsHidden', dismissed); render(); });
+      };
+      render();
+    } catch (e) { main.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  } else if (k === 'drive') {
+    main.innerHTML = '<h2>Drive · changed in the last 30 days</h2><pre id="dr">Loading…</pre>';
+    try { const t = (await api({action:'drive'})).text; $('dr').innerHTML = esc(t).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">open ↗</a>'); }
+    catch (e) { $('dr').textContent = e.message; }
+  }
+}
+let newsCat = 'Cybersecurity', newsSub = 'All';
+async function newsView() {
+  const main = $('main'); main.innerHTML = '<h2>News</h2><div class="meta">Loading…</div>';
+  let d; try { d = await api({action:'news'}); } catch (e) { main.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  const cats = ['Cybersecurity', 'Politics', 'Markets', 'AI'];
+  const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+  const fmtNum = v => v == null ? '–' : v.toLocaleString(undefined, {maximumFractionDigits: v < 10 ? 4 : 2});
+  const spark = s => { if (!s || s.length < 2) return ''; const mn = Math.min(...s), mx = Math.max(...s), w = 80, h = 22;
+    const pts = s.map((v, i) => `${(i / (s.length - 1) * w).toFixed(1)},${(h - (mx === mn ? h / 2 : (v - mn) / (mx - mn) * h)).toFixed(1)}`).join(' ');
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="currentColor" stroke-width="1.5" points="${pts}"/></svg>`; };
+  const render = () => {
+    const items = (d.items || []).filter(i => i.cat === newsCat);
+    const subs = ['All', ...new Set(items.map(i => i.sub))];
+    if (!subs.includes(newsSub)) newsSub = 'All';
+    const shown = items.filter(i => newsSub === 'All' || i.sub === newsSub);
+    const sums = d.summaries || {};
+    const sumKeys = newsCat === 'Politics' ? (newsSub === 'All' ? subs.slice(1).map(s => 'Politics/' + s) : ['Politics/' + newsSub]) : [newsCat];
+    const sumHtml = sumKeys.filter(k => sums[k]).map(k => `${sumKeys.length > 1 ? `<b>${esc(k.split('/')[1])}</b>\n` : ''}${esc(sums[k].text)}`).join('\n\n');
+    const errs = Object.keys(d.errors || {});
+    main.innerHTML = `<h2>News</h2>
+      <div class="chips">${cats.map(x => `<button class="chip ${x === newsCat ? 'on' : ''}" data-cat="${x}">${x} <span class="meta">${(d.items || []).filter(i => i.cat === x).length}</span></button>`).join('')}</div>
+      ${newsCat === 'Markets' && d.markets ? `<div class="tiles">${d.markets.map(m => m.error ? `<div class="tile"><div class="meta">${esc(m.name)}</div><div class="meta">unavailable</div></div>` :
+        `<div class="tile"><div class="meta">${esc(m.name)}</div><div class="v">${fmtNum(m.price)}</div><div class="${m.change >= 0 ? 'up' : 'down'}">${m.change == null ? '' : (m.change >= 0 ? '▲ ' : '▼ ') + Math.abs(m.change).toFixed(2) + '%'} ${spark(m.spark)}</div></div>`).join('')}</div>
+        <div class="meta" style="margin-top:-8px">Delayed quotes from Yahoo Finance · not investment advice</div>` : ''}
+      ${subs.length > 2 ? `<div class="chips">${subs.map(s => `<button class="chip ${s === newsSub ? 'on' : ''}" data-sub="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
+      ${sumHtml ? `<div class="box">✨ ${sumHtml}</div>` : '<div class="meta">The AI summary appears after the next News run.</div>'}
+      ${newsCat === 'Politics' ? '<div class="meta">Leaning tags are approximate (based on media-bias ratings) and only there so you can compare sides.</div>' : ''}
+      <div>${shown.map((i, n) => `<div class="news"><div class="tx"><a href="${esc(safeUrl(i.link))}" target="_blank" rel="noopener">${esc(i.title)}</a>
+        <div class="sm">${esc(i.source)}${i.lean ? `<span class="lean ${esc(i.lean)}">${esc(i.lean)}</span>` : ''} · ${ago(i.t)}${newsSub === 'All' && i.sub !== 'News' ? ' · ' + esc(i.sub) : ''}</div>
+        ${i.summary ? `<div class="sm">${esc(i.summary.slice(0, 200))}</div>` : ''}</div><button class="btn" data-save="${n}" title="Save the article to Obsidian (Firecrawl)">📥</button></div>`).join('') || '<div class="empty">No items yet</div>'}</div>
+      <p class="meta">Updated ${d.fetchedAt ? ago(d.fetchedAt) : 'never'}${errs.length ? ` · feeds not working: ${errs.map(esc).join(', ')}` : ''}</p>`;
+    main.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { newsCat = b.dataset.cat; newsSub = 'All'; render(); });
+    main.querySelectorAll('[data-sub]').forEach(b => b.onclick = () => { newsSub = b.dataset.sub; render(); });
+    main.querySelectorAll('[data-save]').forEach(b => b.onclick = async () => { const i = shown[+b.dataset.save]; toast('Firecrawl is fetching the page…');
+      try { toast('Saved: ' + (await api({action:'savelink', url: i.link})).saved); } catch (e) { toast(e.message); } });
+  };
+  render();
+}
+let intelTab = 'Overview', intelStack = false, intelQ = '', intelSort = 'epss';
+async function intelView() {
+  const main = $('main'); main.innerHTML = '<h2>Threat intel</h2><div class="meta">Loading…</div>';
+  let d; try { d = await api({action:'vulns'}); } catch (e) { main.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  if (d.note) { main.innerHTML = `<h2>Threat intel</h2><div class="empty">${esc(d.note)}</div>`; return; }
+  const E = d.epss || {}, A = d.attack || {}, C = d.cves || {};
+  const sevCls = s => s >= 9 ? 'c' : s >= 7 ? 'h' : s >= 4 ? 'm' : 'l';
+  const sev = s => s == null ? '<span class="meta">n/a</span>' : `<span class="sev ${sevCls(s)}">${s.toFixed(1)}</span>`;
+  const ep = id => E[id] ? `${(E[id].epss * 100).toFixed(E[id].epss < 0.1 ? 2 : 1)}%<div class="meta" style="margin:0">p${Math.round(E[id].pct * 100)}</div>` : '<span class="meta">–</span>';
+  const ttps = id => (A[id] || []).map(t => `<a class="ttp" href="https://attack.mitre.org/techniques/${esc(t.id.replace('.', '/'))}/" target="_blank" rel="noopener" title="${esc(t.tactic)} · AI-suggested">${esc(t.id)} ${esc(t.name)}</a>`).join('');
+  const kevById = Object.fromEntries((d.kev || []).map(k => [k.id, k]));
+  const match = (txt, watch) => (!intelStack || (watch && watch.length)) && (!intelQ || txt.toLowerCase().includes(intelQ.toLowerCase()));
+  const detail = id => {
+    const x = C[id] || {}, k = kevById[id];
+    return `<tr><td colspan="7"><div class="box" style="white-space:normal">
+      <b>${esc(id)}</b>${k ? `<span class="kev">KEV</span>` : ''}${k?.ransomware ? '<span class="rw">ransomware</span>' : ''}
+      <p>${esc(x.desc || k?.desc || '')}</p>
+      ${k ? `<p><b>Required action (CISA):</b> ${esc(k.action)} · due ${esc(k.due)}</p>` : ''}
+      <p class="meta">CVSS ${x.cvss ?? 'n/a'} ${esc(x.severity || '')} ${x.vector ? '· ' + esc(x.vector) : ''} · CWE ${esc((x.cwe || k?.cwes || []).join(', ') || 'n/a')}</p>
+      ${A[id]?.length ? `<p>ATT&CK (AI-suggested, verify): ${ttps(id)}</p>` : ''}
+      <div class="acts"><a class="btn" href="https://nvd.nist.gov/vuln/detail/${esc(id)}" target="_blank" rel="noopener">NVD ↗</a>
+        <a class="btn" href="https://www.cve.org/CVERecord?id=${esc(id)}" target="_blank" rel="noopener">CVE.org ↗</a>
+        <button class="btn" data-note="${esc(id)}">📝 Save to Obsidian</button><button class="btn" data-task="${esc(id)}">➕ Add as task</button></div>
+      ${(x.refs || []).length ? '<div class="meta">' + x.refs.slice(0, 5).map(r => `<div><a href="${esc(safeUrl(r))}" target="_blank" rel="noopener">${esc(r)}</a></div>`).join('') + '</div>' : ''}
+    </div></td></tr>`;
+  };
+  let open = null;
+  const render = () => {
+    const kev = (d.kev || []).filter(k => match(`${k.id} ${k.vendor} ${k.product} ${k.name}`, (C[k.id] || {}).watch));
+    let cves = Object.values(C).filter(x => match(`${x.id} ${x.desc}`, x.watch));
+    cves.sort((a, b) => intelSort === 'cvss' ? (b.cvss ?? 0) - (a.cvss ?? 0) : intelSort === 'date' ? new Date(b.published) - new Date(a.published) : (E[b.id]?.epss || 0) - (E[a.id]?.epss || 0));
+    const week = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+    const tiles = [['New in KEV (7 days)', (d.kev || []).filter(k => k.added >= week).length], ['Critical CVEs (48 h)', Object.values(C).filter(x => (x.cvss ?? 0) >= 9).length],
+      ['EPSS ≥ 10%', Object.values(C).filter(x => (E[x.id]?.epss || 0) >= 0.1).length], ['Your stack', Object.values(C).filter(x => x.watch?.length).length], ['KEV total', d.kevCount || '–'],
+      ['Ransomware victims', (d.ransomware || []).length], ['…in Portugal', (d.ransomware || []).filter(v => v.country === 'PT').length]];
+    const head = `<h2>Threat intel</h2>
+      <div class="chips">${['Overview', 'KEV', 'CVEs', 'GitHub', 'EU (EUVD)', 'Ransomware', 'Advisories'].map(t => `<button class="chip ${t === intelTab ? 'on' : ''}" data-tab="${t}">${t}</button>`).join('')}
+        <label class="meta" style="margin-left:10px"><input type="checkbox" id="stk" ${intelStack ? 'checked' : ''}> My stack only</label>
+        <input id="iq" value="${esc(intelQ)}" placeholder="Filter (vendor, CVE…)" style="margin-left:auto;padding:5px 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text)"></div>`;
+    let body = '';
+    if (intelTab === 'Overview') {
+      body = `<div class="tiles">${tiles.map(([n, v]) => `<div class="tile"><div class="meta">${n}</div><div class="v">${v}</div></div>`).join('')}</div>
+        ${d.summary ? `<div class="box">✨ ${esc(d.summary.text)}</div>` : ''}
+        <h3>Newest actively exploited (KEV)</h3><table><tbody>${kev.slice(0, 6).map(k => `<tr class="cl" data-id="${esc(k.id)}"><td><b>${esc(k.id)}</b>${k.ransomware ? '<span class="rw">ransomware</span>' : ''}</td><td>${esc(k.vendor)} ${esc(k.product)}</td><td>${sev((C[k.id] || {}).cvss)}</td><td>${ep(k.id)}</td><td class="meta">${esc(k.added)}</td></tr>`).join('')}</tbody></table>
+        <h3>Most likely to be exploited (EPSS)</h3><table><tbody>${cves.slice(0, 6).map(x => `<tr class="cl" data-id="${esc(x.id)}"><td><b>${esc(x.id)}</b>${x.kev ? '<span class="kev">KEV</span>' : ''}${(x.watch || []).map(w => `<span class="wl">${esc(w)}</span>`).join('')}</td><td>${esc(x.desc.slice(0, 110))}…</td><td>${sev(x.cvss)}</td><td>${ep(x.id)}</td></tr>`).join('')}</tbody></table>`;
+    } else if (intelTab === 'KEV') {
+      body = `<div class="meta">CISA Known Exploited Vulnerabilities added in the last 30 days (catalog ${esc(d.kevVersion || '')})</div><table><thead><tr><th>CVE</th><th>Vendor / product</th><th>Name</th><th>CVSS</th><th>EPSS</th><th>Added</th><th>ATT&CK</th></tr></thead><tbody>
+        ${kev.map(k => `<tr class="cl" data-id="${esc(k.id)}"><td><b>${esc(k.id)}</b>${k.ransomware ? '<span class="rw">ransomware</span>' : ''}${k.eu ? '<span class="wl" title="Also listed as exploited by ENISA EUVD">EU</span>' : ''}${((C[k.id] || {}).watch || []).map(w => `<span class="wl">${esc(w)}</span>`).join('')}</td><td>${esc(k.vendor)}<div class="meta" style="margin:0">${esc(k.product)}</div></td><td>${esc(k.name)}</td><td>${sev((C[k.id] || {}).cvss)}</td><td>${ep(k.id)}</td><td class="meta">${esc(k.added)}<br>due ${esc(k.due)}</td><td>${ttps(k.id)}</td></tr>${open === k.id ? detail(k.id) : ''}`).join('')}</tbody></table>`;
+    } else if (intelTab === 'CVEs') {
+      body = `<div class="meta">CVEs published in the last 48 h with CVSS ≥ 7, plus KEV and your stack · sort: ${['epss', 'cvss', 'date'].map(s => `<a href="#" data-sort="${s}" style="${s === intelSort ? 'font-weight:700' : ''}">${s.toUpperCase()}</a>`).join(' · ')}</div>
+        <table><thead><tr><th>CVE</th><th>Description</th><th>CVSS</th><th>EPSS</th><th>CWE</th><th>Published</th><th>ATT&CK</th></tr></thead><tbody>
+        ${cves.slice(0, 200).map(x => `<tr class="cl" data-id="${esc(x.id)}"><td><b>${esc(x.id)}</b>${x.kev ? '<span class="kev">KEV</span>' : ''}${(x.watch || []).map(w => `<span class="wl">${esc(w)}</span>`).join('')}</td><td>${esc(x.desc.slice(0, 160))}${x.desc.length > 160 ? '…' : ''}</td><td>${sev(x.cvss)}</td><td>${ep(x.id)}</td><td class="meta">${esc((x.cwe || []).join(' '))}</td><td class="meta">${fmtDate(x.published)}</td><td>${ttps(x.id)}</td></tr>${open === x.id ? detail(x.id) : ''}`).join('') || '<tr><td colspan="7" class="empty">Nothing matches</td></tr>'}</tbody></table>`;
+    } else if (intelTab === 'GitHub') {
+      const g = (d.ghsa || []).filter(a => match(`${a.id} ${a.cve} ${a.summary} ${a.packages.join(' ')}`, a.watch));
+      body = `<div class="meta">Newest reviewed GitHub Security Advisories (open-source packages)</div><table><thead><tr><th>Advisory</th><th>Summary</th><th>Packages</th><th>Severity</th><th>EPSS</th><th>Published</th></tr></thead><tbody>
+        ${g.map(a => `<tr><td><a href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener">${esc(a.id)}</a><div class="meta" style="margin:0">${esc(a.cve)}</div>${a.watch.map(w => `<span class="wl">${esc(w)}</span>`).join('')}</td><td>${esc(a.summary)}</td><td class="meta">${a.packages.map(esc).join('<br>')}</td><td>${a.cvss != null ? sev(+a.cvss) : esc(a.severity)}</td><td class="meta">${a.epss != null ? (+a.epss * 100).toFixed(2) + '%' : '–'}</td><td class="meta">${fmtDate(a.published)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No data</td></tr>'}</tbody></table>`;
+    } else if (intelTab === 'EU (EUVD)') {
+      const row = v => `<tr><td><a href="https://euvd.enisa.europa.eu/vulnerability/${esc(v.id)}" target="_blank" rel="noopener">${esc(v.id)}</a><div class="meta" style="margin:0">${v.cves.map(esc).join(' ')}</div></td><td>${esc(v.vendor)}<div class="meta" style="margin:0">${esc(v.product)}</div></td><td>${esc(v.desc.slice(0, 180))}</td><td>${v.score != null ? sev(+v.score) : '–'}</td><td class="meta">${v.epss != null ? (+v.epss).toFixed(2) + '%' : '–'}</td><td class="meta">${fmtDate(v.exploitedSince || v.published)}</td></tr>`;
+      const head2 = '<table><thead><tr><th>EUVD</th><th>Vendor / product</th><th>Description</th><th>Score</th><th>EPSS</th><th>Date</th></tr></thead><tbody>';
+      body = `<h3>Exploited (ENISA)</h3>${head2}${(d.euvdExploited || []).filter(v => match(v.id + v.cves.join(' ') + v.vendor + v.product + v.desc)).map(row).join('') || '<tr><td colspan="6" class="empty">No data</td></tr>'}</tbody></table>
+        <h3>Critical (score ≥ 9)</h3>${head2}${(d.euvdCritical || []).filter(v => match(v.id + v.cves.join(' ') + v.vendor + v.product + v.desc)).map(row).join('') || '<tr><td colspan="6" class="empty">No data</td></tr>'}</tbody></table>`;
+    } else if (intelTab === 'Ransomware') {
+      const r = (d.ransomware || []).filter(v => !intelQ || `${v.victim} ${v.group} ${v.country} ${v.sector}`.toLowerCase().includes(intelQ.toLowerCase()));
+      const groups = Object.entries(r.reduce((m, v) => (m[v.group] = (m[v.group] || 0) + 1, m), {})).sort((a, b) => b[1] - a[1]).slice(0, 8);
+      body = `<div class="meta">Latest victims claimed on ransomware leak sites (ransomware.live). Claims are the attackers' and not always verified.</div>
+        <div class="chips">${groups.map(([g, n]) => `<span class="chip">${esc(g)} <span class="meta">${n}</span></span>`).join('')}</div>
+        <table><thead><tr><th>Victim</th><th>Group</th><th>Country</th><th>Sector</th><th>Date</th></tr></thead><tbody>
+        ${r.map(v => `<tr${v.country === 'PT' ? ' style="background:#1d2330"' : ''}><td>${esc(v.victim)}${v.domain ? `<div class="meta" style="margin:0">${esc(v.domain)}</div>` : ''}</td><td>${esc(v.group)}</td><td>${esc(v.country)}</td><td class="meta">${esc(v.sector)}</td><td class="meta">${fmtDate(v.date)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No data</td></tr>'}</tbody></table>`;
+    } else {
+      const adv = (d.advisories || []).filter(a => !intelQ || a.title.toLowerCase().includes(intelQ.toLowerCase()));
+      body = adv.map(a => `<div class="news"><div class="tx"><a href="${esc(safeUrl(a.link))}" target="_blank" rel="noopener">${esc(a.title)}</a><div class="sm">${esc(a.source)} · ${fmtDate(a.t)} ${a.cves.map(v => `<span class="ttp">${esc(v)}</span>`).join('')}</div></div></div>`).join('') || '<div class="empty">No advisories</div>';
+    }
+    const errs = Object.keys(d.errors || {});
+    main.innerHTML = head + body + `<p class="meta">Sources: CISA KEV, NVD, FIRST EPSS, ENISA EUVD, GitHub advisories, ransomware.live, CISA / CNCS advisories, Exploit-DB. ATT&CK techniques are suggested by the local model; check them on attack.mitre.org. Updated ${d.ranAt ? fmtDate(d.ranAt) + ' ' + new Date(d.ranAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'never'}${errs.length ? ' · problems: ' + errs.map(esc).join(', ') : ''}</p>`;
+    main.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { intelTab = b.dataset.tab; open = null; render(); });
+    main.querySelectorAll('[data-sort]').forEach(b => b.onclick = e => { e.preventDefault(); intelSort = b.dataset.sort; render(); });
+    $('stk').onchange = e => { intelStack = e.target.checked; render(); };
+    $('iq').onkeydown = e => { if (e.key === 'Enter') { intelQ = e.target.value.trim(); render(); } };
+    main.querySelectorAll('tr.cl').forEach(tr => tr.onclick = e => { if (e.target.closest('a')) return; const id = tr.dataset.id;
+      if (intelTab === 'Overview') { intelTab = kevById[id] ? 'KEV' : 'CVEs'; } open = open === id ? null : id; render(); });
+    main.querySelectorAll('[data-note]').forEach(b => b.onclick = async e => { e.stopPropagation(); try { toast('Saved: ' + (await api({action:'cvenote', id: b.dataset.note})).saved); } catch (er) { toast(er.message); } });
+    main.querySelectorAll('[data-task]').forEach(b => b.onclick = async e => { e.stopPropagation(); const id = b.dataset.task, k = kevById[id];
+      try { await api({action:'addtask', title: `Check ${id}${k ? ' (' + k.vendor + ' ' + k.product + ')' : ''}`, from: 'Threat intel', link: `https://nvd.nist.gov/vuln/detail/${id}`}); toast('Added to Google Tasks'); } catch (er) { toast(er.message); } });
+  };
+  render();
+}
+let ytFilter = 'all';
+async function ytView() {
+  const main = $('main'); main.innerHTML = '<h2>YouTube</h2><div class="meta">Loading…</div>';
+  let d; try { d = await api({action:'youtube'}); } catch (e) { main.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  const seenV = store('ytSeen', {});
+  const render = () => {
+    const vids = (d.videos || []).filter(v => ytFilter === 'all' || (ytFilter === 'new' ? !seenV[v.id] : v.verdict === ytFilter));
+    main.innerHTML = `<h2>YouTube</h2><div class="chips">${[['all','All'],['new','Unseen'],['watch','Worth watching'],['skim','Skim'],['skip','Skip']].map(([k, n]) => `<button class="chip ${k === ytFilter ? 'on' : ''}" data-f="${k}">${n}</button>`).join('')}</div>
+      ${vids.map(v => `<div class="vid" style="${seenV[v.id] ? 'opacity:.6' : ''}"><a href="${esc(safeUrl(v.link))}" target="_blank" rel="noopener" data-v="${esc(v.id)}"><img src="${esc(safeUrl(v.thumb))}" alt="" loading="lazy"></a>
+        <div><a href="${esc(safeUrl(v.link))}" target="_blank" rel="noopener" data-v="${esc(v.id)}" style="color:var(--text);font-weight:600;text-decoration:none">${esc(v.title)}</a>${v.verdict ? `<span class="vd ${esc(v.verdict)}">${esc(v.verdict)}</span>` : ''}
+        <div class="meta" style="margin:2px 0">${esc(v.channel)} · ${fmtDate(v.t)}${v.why ? ' · ' + esc(v.why) : ''}${v.summary && !v.fromTranscript ? ' · from description only' : ''}</div>
+        ${v.summary ? `<ul>${v.summary.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : '<div class="meta">Summary coming in the next run…</div>'}
+        ${(v.topics || []).map(t => `<span class="ttp">${esc(t)}</span>`).join('')}</div></div>`).join('') || '<div class="empty">No videos</div>'}
+      <p class="meta">Channels are set in the "YouTube jobs" step.${Object.keys(d.errors || {}).length ? ' Problems: ' + Object.entries(d.errors).map(([k, v]) => esc(k + ': ' + v)).join(' · ') : ''}</p>`;
+    main.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { ytFilter = b.dataset.f; render(); });
+    main.querySelectorAll('[data-v]').forEach(a => a.addEventListener('click', () => { seenV[a.dataset.v] = Date.now(); keep('ytSeen', seenV); }));
+  };
+  render();
+}
+async function ghView() {
+  const main = $('main'); main.innerHTML = '<h2>GitHub</h2><div class="meta">Loading…</div>';
+  let d; try { d = await api({action:'github'}); } catch (e) { main.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  if (d.note) { main.innerHTML = `<h2>GitHub</h2><div class="empty">${esc(d.note)}</div>`; return; }
+  const dot = w => `<span class="ci ${w.status !== 'completed' ? 'run' : esc(w.conclusion || '')}"></span>`;
+  main.innerHTML = '<h2>GitHub</h2>' + d.repos.map(r => `<h3><a href="https://github.com/${esc(r.repo)}" target="_blank" rel="noopener">${esc(r.repo)}</a></h3>
+    ${r.errors && Object.keys(r.errors).length ? `<div class="box">${Object.entries(r.errors).map(([k, v]) => esc(k + ': ' + v)).join('\n')}</div>` : ''}
+    ${r.health ? `<div class="tiles">${r.health.map(w => `<div class="tile">${dot(w)}<b>${esc(w.name)}</b><div class="meta">${esc(w.branch)} · ${esc(w.status !== 'completed' ? w.status : w.conclusion)} · ${fmtDate(w.at)}</div></div>`).join('') || '<div class="meta">No workflow runs (no GitHub Actions in this repo yet)</div>'}</div>` : ''}
+    ${r.runs?.length ? `<table><thead><tr><th>Run</th><th>Workflow</th><th>Branch</th><th>Event</th><th>When</th></tr></thead><tbody>${r.runs.slice(0, 10).map(w => `<tr><td>${dot(w)}<a href="${esc(safeUrl(w.url))}" target="_blank" rel="noopener">${esc(w.title || w.sha)}</a></td><td>${esc(w.name)}</td><td class="meta">${esc(w.branch)}</td><td class="meta">${esc(w.event)}</td><td class="meta">${fmtDate(w.at)}</td></tr>`).join('')}</tbody></table>` : ''}
+    <div class="grid2"><div><h3>Open PRs (${(r.prs || []).length})</h3>${(r.prs || []).map(p => `<div><a href="${esc(safeUrl(p.url))}" target="_blank" rel="noopener">#${p.n} ${esc(p.title)}</a></div>`).join('') || '<div class="meta">none</div>'}
+      <h3>Closed this week (${(r.closedThisWeek || []).length})</h3>${(r.closedThisWeek || []).map(p => `<div class="meta">✓ <a href="${esc(safeUrl(p.url))}" target="_blank" rel="noopener">#${p.n} ${esc(p.title)}</a></div>`).join('') || '<div class="meta">none</div>'}</div>
+      <div><h3>Open issues (${(r.issues || []).length})</h3>${(r.issues || []).map(i => `<div><a href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">#${i.n} ${esc(i.title)}</a> ${i.labels.map(l => `<span class="ttp">${esc(l)}</span>`).join('')}</div>`).join('') || '<div class="meta">none</div>'}</div></div>
+    <h3>Commits this week (${(r.commits || []).length})</h3>${(r.commits || []).map(x => `<div class="meta"><a href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener"><code>${esc(x.sha)}</code></a> ${esc(x.msg)} · ${fmtDate(x.at)}</div>`).join('') || '<div class="meta">none</div>'}`).join('')
+    + `<p class="meta">Updated ${d.ranAt ? fmtDate(d.ranAt) + ' ' + new Date(d.ranAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'never'} · repos are set in the "GitHub jobs" step</p>`;
+}
+const mdLite = t => esc(t).replace(/^### (.*)$/gm, '<h3>$1</h3>').replace(/^## (.*)$/gm, '<h2>$1</h2>').replace(/^# (.*)$/gm, '<h1>$1</h1>')
+  .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+  .replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>');
+let rlShowDone = false;
+async function rlView(selName) {
+  const main = $('main'); main.innerHTML = '<h2>Read later</h2><div class="meta">Loading…</div>';
+  let d; try { d = await api({action:'rl_list'}); } catch (e) { main.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  const items = d.items.filter(i => rlShowDone || !i.done);
+  main.innerHTML = `<h2>Read later</h2><div class="meta">${d.items.filter(i => !i.done).length} unread · saved with 📥 from emails and News <label style="margin-left:10px"><input type="checkbox" id="rld" ${rlShowDone ? 'checked' : ''}> show read</label></div>
+    <div class="rlgrid"><div id="rll">${items.map(i => `<div class="rlitem ${i.done ? 'done' : ''}" data-n="${esc(i.name)}"><b>${esc(i.title)}</b><div class="meta" style="margin:0">${i.saved ? fmtDate(i.saved) : ''} · ~${Math.max(1, Math.round(i.words / 230))} min read${i.summary ? ' · ✨' : ''}</div></div>`).join('') || '<div class="empty">Nothing saved yet</div>'}</div>
+    <div id="rlr"><div class="empty">Pick an article</div></div></div>`;
+  $('rld').onchange = e => { rlShowDone = e.target.checked; rlView(); };
+  const openRl = async (name, el) => {
+    main.querySelectorAll('.rlitem').forEach(x => x.classList.remove('sel')); el && el.classList.add('sel');
+    const r = $('rlr'); r.innerHTML = '<div class="meta">Loading…</div>';
+    try { const g = await api({action:'rl_get', name}); const it = d.items.find(i => i.name === name) || {};
+      r.innerHTML = `<div class="acts"><button class="btn" id="rls">✨ ${g.summary ? 'Summary' : 'Summarise'}</button><button class="btn" id="rlx">✓ Mark read</button>${it.source && /^https?:/.test(it.source) ? `<a class="btn" href="${esc(it.source)}" target="_blank" rel="noopener">Original ↗</a>` : ''}</div>
+        <div id="rlsum" class="box" style="display:${g.summary ? 'block' : 'none'}">${esc(g.summary || '')}</div><div class="md"><p>${mdLite(g.text)}</p></div>`;
+      $('rls').onclick = async () => { const s = $('rlsum'); s.style.display = 'block'; if (g.summary) return; s.textContent = 'Thinking…'; try { s.textContent = (await api({action:'rl_summary', name})).summary; } catch (e) { s.textContent = e.message; } };
+      $('rlx').onclick = async () => { try { await api({action:'rl_done', name}); toast('Marked as read in Inbox.md'); rlView(); } catch (e) { toast(e.message); } };
+    } catch (e) { r.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  };
+  main.querySelectorAll('.rlitem').forEach(el => el.onclick = () => openRl(el.dataset.n, el));
+  if (selName) { const el = main.querySelector(`.rlitem[data-n="${CSS.escape(selName)}"]`); if (el) openRl(selName, el); }
+}
+function wireAsk() {
+  const go = async () => { const v = $('askq').value.trim(); if (!v) return; const a = $('answer'); a.innerHTML = '<div class="box">Searching and reading…</div>';
+    try { const j = await api({action:'ask', q: v});
+      a.innerHTML = `<div class="box">${esc(j.answer)}</div><div class="meta">Searched: <code>${esc(j.query)}</code></div>` +
+        j.sources.map((m, i) => `<div class="it" data-i="${i}">[${i + 1}] <b>${esc(m.fromName)}</b> · ${esc(m.subject)} <span class="d">${fmtDate(m.date)}</span></div>`).join('');
+      a.querySelectorAll('[data-i]').forEach(el => el.onclick = () => openMail(j.sources[+el.dataset.i]));
+    } catch (e) { a.innerHTML = `<div class="box">${esc(e.message)}</div>`; } };
+  $('askb').onclick = go; $('askq').onkeydown = e => { if (e.key === 'Enter') go(); };
+}
+let st; $('search').oninput = e => { clearTimeout(st); st = setTimeout(() => { const v = e.target.value.trim(); if (v) { view = 'search'; q = v; } else { view = navView; q = navQ; } showDigest(); load(); }, 500); };
+$('threads').onchange = () => load();
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') { if (e.key === 'Escape') e.target.blur(); return; }
+  const k = e.key;
+  if (k === 'j') select(idx + 1); else if (k === 'k') select(idx - 1);
+  else if (k === '/') { e.preventDefault(); $('search').focus(); }
+  else if (k === 's') summarise(); else if (k === 't') addTask(); else if (k === 'l') readLater();
+  else if (k === 'e' && view === 'needs') markDone();
+  else if (k === 'o' && current) window.open(safeUrl(current.link), '_blank', 'noopener');
+  else if (k === '?') toast('j/k move · / search · s summarise · t task · l read later · e done · o open in Gmail');
+});
+$('main').innerHTML = '<div class="empty">Pick an email · press ? for shortcuts</div>';
+loadDigest().then(() => { load(); refreshLabels(); tool('today'); });
+setInterval(() => { refreshLabels(); if (view === 'needs' && !q && !document.querySelector('#items .sel')) load(); }, 5 * 60 * 1000);
+const trim = (o, k, n) => { const e = Object.entries(o); if (e.length > n) { const keepE = e.sort((a, b) => (b[1] || 0) - (a[1] || 0)).slice(0, n); keep(k, Object.fromEntries(keepE)); } };
+trim(seen, 'seen', 3000); trim(done, 'done', 3000);
+</script></body></html>

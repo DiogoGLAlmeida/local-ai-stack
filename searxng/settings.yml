@@ -1,0 +1,19 @@
+use_default_settings: true
+
+general:
+  instance_name: "Local AI Search"
+
+server:
+  secret_key: "set-in-env-file"
+  limiter: false
+  image_proxy: true
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+engines:
+  - name: wolframalpha
+    disabled: false

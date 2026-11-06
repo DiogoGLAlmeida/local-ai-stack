@@ -1,0 +1,7 @@
+.env
+.mcp-gateway-token
+*.pem
+logs/
+*.log
+*.zip
+__pycache__/

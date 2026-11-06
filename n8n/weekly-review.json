@@ -1,0 +1,128 @@
+{
+  "name": "Weekly review",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "4bd2e8e1-e809-4b81-ad18-533e7d8e510e",
+      "name": "Every 30 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "25483c96-6689-4377-a00e-1e562eebbc3b",
+      "name": "Test run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tz = 'Europe/Lisbon';\nconst now = $now.setZone(tz);\nlet manual = false; try { manual = $('Test run').isExecuted; } catch (e) {}\n\nconst target = (now.weekday === 7 && now.hour >= 18) || manual ? now : now.minus({ weeks: 1 });\nconst S = {\n  tz, week: target.toFormat(\"kkkk-'W'WW\"), start: target.startOf('week').toISO(), end: target.endOf('week').toISO(),\n  nextStart: target.startOf('week').plus({ weeks: 1 }).toISO(), nextEnd: target.endOf('week').plus({ weeks: 1 }).toISO(),\n  folder: '/vault/Weekly', dailyFolder: '/vault/Daily', readLaterFolder: '/vault/Read later', inboxNote: '/vault/Inbox.md', gmailLogFolder: '/vault/Gmail',\n  appCache: '/home/node/.n8n',\n  googleMcpUrl: 'http://mcp-google:8000/mcp',\n  ollamaUrl: 'http://host.docker.internal:11434',\n  model: 'qwen3.8:27b',\n  manual,\n};\nS.file = `${S.folder}/${S.week} Review.md`;\nconst fs = require('fs');\nif (!manual && fs.existsSync(S.file)) return [];\nif (!manual && now.weekday !== 7 && now.weekday !== 1 && fs.existsSync(S.file)) return [];\nreturn [{ json: S }];\n"
+      },
+      "id": "bf26a274-65e8-4e42-9be7-e9a4003da523",
+      "name": "Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst S = $input.first().json;\n\nconst helpers = this.helpers;\nlet sid = null; let nextId = 0;\nconst parseBody = (body) => {\n  if (Buffer.isBuffer(body)) body = body.toString('utf8');\n  if (typeof body !== 'string') return body || {};\n  const t = body.trim();\n  if (t.startsWith('{')) return JSON.parse(t);\n  const datas = t.split('\\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim());\n  for (const d of datas.reverse()) { try { const j = JSON.parse(d); if (j.result || j.error) return j; } catch (e) {} }\n  return {};\n};\nasync function rpc(method, params, notify = false) {\n  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };\n  if (sid) headers['mcp-session-id'] = sid;\n  const msg = notify ? { jsonrpc: '2.0', method, params } : { jsonrpc: '2.0', id: ++nextId, method, params };\n  const res = await helpers.httpRequest({ method: 'POST', url: S.googleMcpUrl, headers, body: JSON.stringify(msg),\n    json: false, returnFullResponse: true, ignoreHttpStatusErrors: true, timeout: 120000 });\n  const h = res.headers || {};\n  sid = sid || h['mcp-session-id'] || h['Mcp-Session-Id'];\n  if (notify) return null;\n  const j = parseBody(res.body);\n  if (j.error) throw new Error(j.error.message || JSON.stringify(j.error));\n  return j.result;\n}\nasync function mcpInit() {\n  await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'n8n-gmail-organizer', version: '1' } });\n  await rpc('notifications/initialized', {}, true);\n}\nasync function tool(name, args) {\n  const r = await rpc('tools/call', { name, arguments: args });\n  const text = (r?.content || []).map(c => c.text || '').join('\\n').trim();\n  if (/ACTION REQUIRED|Authentication Needed/i.test(text)) throw new Error('Google sign-in needed (see README: Google sign-in link)');\n  if (r?.isError) throw new Error(text.slice(0, 400));\n  return text;\n}\n\nconst t0 = Date.parse(S.start), t1 = Date.parse(S.end);\nconst inWeek = (t) => { const x = typeof t === 'number' ? t : Date.parse(t); return x >= t0 && x <= t1; };\nconst read = (f) => { try { return JSON.parse(fs.readFileSync(`${S.appCache}/${f}`, 'utf8')); } catch (e) { return null; } };\nconst W = { errors: [] };\n\nW.days = [];\ntry {\n  for (const f of fs.readdirSync(S.dailyFolder).filter(f => /^\\d{4}-\\d{2}-\\d{2} Briefing\\.md$/.test(f)).sort()) {\n    const d = f.slice(0, 10); if (!inWeek(Date.parse(d + 'T12:00:00'))) continue;\n    const t = fs.readFileSync(`${S.dailyFolder}/${f}`, 'utf8');\n    const h = (t.split('### Highlights')[1] || '').split('\\n### ')[0].trim();\n    W.days.push({ date: d, highlights: h.slice(0, 1500) });\n  }\n} catch (e) { W.errors.push('daily notes: ' + e.message); }\n\ntry {\n  await mcpInit();\n  W.tasks = (await tool('list_tasks', { task_list_id: '@default', show_completed: true, show_hidden: true, max_results: 100 })).slice(0, 6000);\n  W.nextWeek = (await tool('get_events', { calendar_id: 'primary', time_min: S.nextStart, time_max: S.nextEnd, max_results: 30 })).slice(0, 4000);\n} catch (e) { W.errors.push('google: ' + e.message); }\n\nconst gh = read('mailapp-github.json');\nW.github = (gh?.repos || []).map(r => ({ repo: r.repo, commits: (r.commits || []).filter(c => inWeek(c.at)), closed: (r.closedThisWeek || []).filter(c => inWeek(c.at)),\n  openIssues: (r.issues || []).length, openPrs: (r.prs || []).length, ci: (r.runs || []).filter(w => inWeek(w.at)).reduce((m, w) => (m[w.conclusion || w.status] = (m[w.conclusion || w.status] || 0) + 1, m), {}) }));\nconst mail = read('mailapp-cache.json');\nW.jobs = (mail?.jobs || []).filter(j => inWeek(j.date)).sort((a, b) => b.score - a.score).slice(0, 10);\nW.jobsTotal = (mail?.jobs || []).filter(j => inWeek(j.date)).length;\nW.needsMe = Object.values(mail?.meta || {}).filter(m => m.needs && inWeek(m.date)).map(m => `${m.fromName}: ${m.subject}`).slice(0, 15);\nconst vul = read('mailapp-vulns.json');\nconst ws = S.start.slice(0, 10), we = S.end.slice(0, 10);\nW.kev = (vul?.kev || []).filter(k => k.added >= ws && k.added <= we).map(k => ({ id: k.id, what: `${k.vendor} ${k.product} – ${k.name}`, ransomware: k.ransomware }));\nW.watch = Object.values(vul?.cves || {}).filter(x => x.watch?.length && inWeek(x.published)).map(x => ({ id: x.id, cvss: x.cvss, watch: x.watch, kev: x.kev }));\nconst yt = read('mailapp-youtube.json');\nW.youtube = (yt?.videos || []).filter(v => inWeek(v.t) && v.verdict === 'watch').map(v => ({ title: v.title, channel: v.channel, link: v.link, why: v.why }));\n\ntry {\n  const inbox = fs.existsSync(S.inboxNote) ? fs.readFileSync(S.inboxNote, 'utf8') : '';\n  W.readSaved = fs.readdirSync(S.readLaterFolder).filter(f => f.endsWith('.md')).filter(f => { const t = fs.readFileSync(`${S.readLaterFolder}/${f}`, 'utf8'); const m = t.match(/^saved:\\s*(.+)$/m); return m && inWeek(m[1].trim()); }).map(f => f.slice(0, -3));\n  W.readUnread = (inbox.match(/^- \\[ \\] \\[\\[Read later\\/[^\\]|]+/gm) || []).map(l => l.replace(/^- \\[ \\] \\[\\[Read later\\//, ''));\n} catch (e) { W.readSaved = []; W.readUnread = []; }\n\ntry { W.gmail = fs.readFileSync(`${S.gmailLogFolder}/${S.week} Organizer.md`, 'utf8').split('## Undo')[0].slice(0, 1500); } catch (e) { W.gmail = ''; }\nreturn [{ json: { ...S, W } }];\n"
+      },
+      "id": "81b97e53-c285-42ec-ac78-ece2d63dfed8",
+      "name": "Collect the week",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst S = $input.first().json; const W = S.W;\nconst data = `[Daily highlights]\\n${W.days.map(d => `${d.date}:\\n${d.highlights}`).join('\\n\\n') || 'none'}\n[Google Tasks, raw, includes completed]\\n${W.tasks || 'unavailable'}\n[Next week's calendar, raw]\\n${W.nextWeek || 'unavailable'}\n[GitHub]\\n${W.github.map(r => `${r.repo}: ${r.commits.length} commits (${r.commits.map(c => c.msg).join('; ').slice(0, 800)}), closed: ${r.closed.map(c => '#' + c.n + ' ' + c.title).join('; ') || 'none'}, ${r.openIssues} open issues, CI: ${JSON.stringify(r.ci)}`).join('\\n') || 'no data'}\n[Emails that needed me] ${W.needsMe.join('; ') || 'none'}\n[Job matches this week] ${W.jobsTotal} total; best: ${W.jobs.slice(0, 5).map(j => `${j.role} @ ${j.company} (${j.score})`).join('; ') || 'none'}\n[Security] new KEV: ${W.kev.map(k => k.id + ' ' + k.what).join('; ').slice(0, 1500) || 'none'}; my stack: ${W.watch.map(x => x.id + ' ' + x.watch.join('/')).join('; ') || 'none'}\n[Read later] saved ${W.readSaved.length}, unread in total ${W.readUnread.length}`;\nlet ai = '';\ntry {\n  const r = await this.helpers.httpRequest({ method: 'POST', url: `${S.ollamaUrl}/api/chat`, json: true, timeout: 600000,\n    body: { model: S.model, stream: false, think: false, keep_alive: '2m', options: { num_ctx: 32768, temperature: 0.3 },\n      messages: [{ role: 'user', content: `Write my weekly review for ${S.week} in English Markdown, using ONLY the data below. Never invent anything.\nSections, exactly:\n## The week in short\nOne short paragraph.\n## Done\nBullets: tasks completed this week (only ones the data shows as completed), GitHub progress, other wins.\n## Still open\nBullets: open tasks, open issues, unanswered things that needed me.\n## Next week\nBullets: what's on the calendar, then 3 concrete focus suggestions based on the data (e.g. which GitHub issue to tackle, which job to apply for, read-later backlog).\n\n${data}` }] } });\n  ai = (r.message?.content || '').trim();\n} catch (e) { ai = `_AI summary unavailable: ${e.message}_`; }\nconst L = ['---', `week: ${S.week}`, 'tags: [weekly-review]', '---', '', `# Weekly review · ${S.week}`, '', ai, ''];\nfor (const r of W.github) {\n  L.push(`### GitHub · [${r.repo}](https://github.com/${r.repo})`, `${r.commits.length} commits · ${r.closed.length} closed · ${r.openIssues} open issues · ${r.openPrs} open PRs · CI: ${Object.entries(r.ci).map(([k, v]) => `${v} ${k}`).join(', ') || 'no runs'}`);\n  for (const c of r.closed) L.push(`- ✓ [#${c.n} ${c.title}](${c.url})`);\n  L.push('');\n}\nif (W.jobs.length) { L.push(`### Best job matches (${W.jobsTotal} this week)`); for (const j of W.jobs) L.push(`- **${j.score}** [${j.role}](${j.url}) · ${j.company} · ${j.location} · ${j.mode}`); L.push(''); }\nif (W.kev.length || W.watch.length) {\n  L.push(`### Security this week`, `${W.kev.length} new actively exploited (KEV)`);\n  for (const k of W.kev.slice(0, 15)) L.push(`- [${k.id}](https://nvd.nist.gov/vuln/detail/${k.id}) ${k.what}${k.ransomware ? ' · ransomware' : ''}`);\n  for (const x of W.watch) L.push(`- **Your stack** [${x.id}](https://nvd.nist.gov/vuln/detail/${x.id}) CVSS ${x.cvss ?? '?'} · ${x.watch.join(', ')}`);\n  L.push('');\n}\nif (W.youtube.length) { L.push('### Worth watching'); for (const v of W.youtube) L.push(`- [${v.title}](${v.link}) · ${v.channel}${v.why ? ' · ' + v.why : ''}`); L.push(''); }\nL.push(`### Read later`, `Saved this week: ${W.readSaved.length} · unread: ${W.readUnread.length}`);\nfor (const n of W.readUnread.slice(0, 10)) L.push(`- [ ] [[Read later/${n}]]`);\nL.push('');\nif (W.days.length) L.push('### Daily notes', W.days.map(d => `[[Daily/${d.date} Briefing|${d.date}]]`).join(' · '), '');\nif (W.errors.length) L.push('<small>Problems: ' + W.errors.join(' | ') + '</small>', '');\nL.push('---', `_Generated ${$now.setZone(S.tz).toFormat('ccc d LLL HH:mm')} by n8n + ${S.model}._`);\nfs.mkdirSync(S.folder, { recursive: true });\nfs.writeFileSync(S.file, L.join('\\n'), 'utf8');\nreturn [{ json: { written: S.file.replace('/vault', 'Vault') } }];\n"
+      },
+      "id": "b3413c1c-2123-45be-8fb1-016d0717c2b7",
+      "name": "Write review note",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Every 30 minutes": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test run": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Collect the week",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect the week": {
+      "main": [
+        [
+          {
+            "node": "Write review note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Lisbon"
+  },
+  "pinData": {},
+  "tags": []
+}
