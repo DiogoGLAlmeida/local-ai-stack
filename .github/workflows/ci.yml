@@ -52,11 +52,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install PSScriptAnalyzer
-        shell: pwsh
+      - name: Install PSScriptAnalyzer (from its GitHub release, not the PowerShell Gallery)
         run: |
-          Set-PSRepository PSGallery -InstallationPolicy Trusted
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          v=1.23.0
+          dest="$HOME/.local/share/powershell/Modules/PSScriptAnalyzer/$v"
+          mkdir -p "$dest"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/psa.nupkg" \
+            "https://github.com/PowerShell/PSScriptAnalyzer/releases/download/$v/PSScriptAnalyzer.$v.nupkg"
+          unzip -q "$RUNNER_TEMP/psa.nupkg" -d "$dest"
       - name: Parse and analyze
         shell: pwsh
-        run: ./.github/scripts/check-powershell.ps1
+        run: |
+          Import-Module PSScriptAnalyzer
+          ./.github/scripts/check-powershell.ps1
